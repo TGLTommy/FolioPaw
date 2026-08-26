@@ -1,0 +1,40 @@
+{
+  "name": "foliopaw",
+  "version": "1.0.0",
+  "description": "本地优先的 EPUB/PDF AI 阅读、翻译与问答工具",
+  "private": true,
+  "license": "MIT",
+  "keywords": [
+    "ebook-reader",
+    "epub",
+    "pdf",
+    "ollama",
+    "local-ai",
+    "translation"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "start": "npm run build && npm run start --workspace=backend",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "secrets:scan": "node scripts/scan-secrets.mjs",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "check": "npm run secrets:scan && npm run lint && npm run typecheck && npm test && npm run build && npm run audit:prod",
+    "install:all": "npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "jsdom": "^27.4.0"
+  }
+}

@@ -1,0 +1,116 @@
+# 保留旧版内部项目 ID，确保已有 Docker 卷无需迁移即可继续使用。
+name: readcat
+
+services:
+  foliopaw:
+    image: ${FOLIOPAW_IMAGE:-foliopaw:local}
+    build:
+      context: .
+      target: foliopaw
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:${FOLIOPAW_PORT:-17890}:17891"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 17891
+      DB_PATH: /app/backend/data/database.sqlite
+      UPLOAD_DIR: /app/backend/uploads
+      CORS_ORIGINS: http://localhost:${FOLIOPAW_PORT:-17890},http://127.0.0.1:${FOLIOPAW_PORT:-17890}
+      OLLAMA_BOOTSTRAP_ENABLED: ${OLLAMA_BOOTSTRAP_ENABLED:-true}
+      OLLAMA_BASE_URL: ${FOLIOPAW_OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_BOOTSTRAP_URL: http://model-bootstrap:8080
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      OLLAMA_CONTEXT_WINDOW: ${OLLAMA_CONTEXT_WINDOW:-32768}
+      OLLAMA_MANAGED_TIMEOUT_MS: ${OLLAMA_MANAGED_TIMEOUT_MS:-1800000}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${FOLIOPAW_NO_PROXY:-localhost,127.0.0.1,ollama,model-bootstrap,foliopaw}
+    volumes:
+      - readcat_data:/app/backend/data
+      - readcat_uploads:/app/backend/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:17891/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.32.15}
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NO_CLOUD: "1"
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_WINDOW:-32768}
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 12
+
+  model-bootstrap:
+    image: ${MODEL_BOOTSTRAP_IMAGE:-foliopaw-model-bootstrap:local}
+    build:
+      context: .
+      target: model-bootstrap
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        OLLAMA_IMAGE: ${OLLAMA_IMAGE:-ollama/ollama:0.32.15}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_HOST: 0.0.0.0
+      BOOTSTRAP_PORT: 8080
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      OLLAMA_CONTEXT_WINDOW: ${OLLAMA_CONTEXT_WINDOW:-32768}
+      MODEL_DOWNLOAD_SOURCE: ${MODEL_DOWNLOAD_SOURCE:-auto}
+      MODEL_DOWNLOAD_IDLE_TIMEOUT_MS: ${MODEL_DOWNLOAD_IDLE_TIMEOUT_MS:-90000}
+      MODEL_CACHE_DIR: /cache
+      MODEL_LOCAL_GGUF_PATH: ${MODEL_LOCAL_GGUF_PATH:-/models/Qwen_Qwen3.5-4B-Q4_K_M.gguf}
+      MODELSCOPE_MODEL_URL: https://modelscope.cn/models/bartowski/Qwen_Qwen3.5-4B-GGUF/resolve/71b231d64df1bbbe8a03f63ea4274c3921da4700/Qwen_Qwen3.5-4B-Q4_K_M.gguf
+      MODELSCOPE_MODEL_SIZE: "3013027808"
+      MODELSCOPE_MODEL_SHA256: 13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${FOLIOPAW_NO_PROXY:-localhost,127.0.0.1,ollama,model-bootstrap,foliopaw}
+      NODE_USE_ENV_PROXY: "1"
+    volumes:
+      - model_download_cache:/cache
+      - ./models:/models:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 5s
+      retries: 5
+
+volumes:
+  # 保留旧版卷名称，避免产品改名后丢失已有本地数据。
+  readcat_data:
+  readcat_uploads:
+  ollama_data:
+  model_download_cache:

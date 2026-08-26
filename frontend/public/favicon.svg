@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="FolioPaw 阅读猫">
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <path d="M14 17h9l9 13 9-13h9v30h-8V29L32 43 22 29v18h-8V17Z" fill="#f8fafc"/>
+</svg>

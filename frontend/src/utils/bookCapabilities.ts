@@ -1,0 +1,15 @@
+import type { Book } from '../types';
+
+export type ReadingMode = 'translated' | 'original';
+
+export function canUseBookTextFeatures(
+  book: Pick<Book, 'text_extraction_status'> | null | undefined
+): boolean {
+  return book?.text_extraction_status !== 'unavailable';
+}
+
+export function getDefaultReadingMode(
+  fileType: Book['file_type'] | null | undefined
+): ReadingMode {
+  return fileType === 'pdf' ? 'original' : 'translated';
+}

@@ -1,0 +1,6 @@
+services:
+  ollama:
+    image: ${OLLAMA_ROCM_IMAGE:-ollama/ollama:0.32.15-rocm}
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri

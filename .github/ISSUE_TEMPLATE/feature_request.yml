@@ -1,0 +1,23 @@
+name: 功能建议
+description: 为本地单人应用提出一项聚焦的改进建议。
+title: "[功能建议]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 这项功能要解决什么用户问题？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: 安全、隐私与成本影响
+      description: 请说明新增的网络暴露、持久化数据、第三方服务或模型费用。

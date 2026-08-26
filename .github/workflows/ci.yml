@@ -1,0 +1,86 @@
+name: 持续集成
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 使用 Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖前扫描仓库敏感信息
+        run: node scripts/scan-secrets.mjs
+
+      - name: 按锁文件安装依赖
+        run: npm ci
+
+      - name: 运行代码检查、类型检查、测试、构建、安全扫描和依赖审计
+        run: npm run check
+
+  docker:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 校验 CPU 与 GPU Compose 配置
+        run: |
+          docker compose config >/dev/null
+          docker compose -f compose.yaml -f compose.nvidia.yaml config >/dev/null
+          docker compose -f compose.yaml -f compose.amd.yaml config >/dev/null
+
+      - name: 构建不含模型权重的 FolioPaw 应用镜像
+        run: docker build --target foliopaw --tag foliopaw-ci .
+
+      - name: 使用轻量 Ollama CLI 测试替身构建模型引导镜像
+        run: |
+          docker build -f docker/ollama-cli-fixture.Dockerfile --tag foliopaw-ollama-cli-fixture:ci .
+          docker build --target model-bootstrap \
+            --build-arg OLLAMA_IMAGE=foliopaw-ollama-cli-fixture:ci \
+            --tag foliopaw-model-bootstrap-ci .
+          test "$(docker image inspect foliopaw-model-bootstrap-ci --format '{{.Config.User}}')" = "node"
+          docker run --rm --entrypoint /bin/sh foliopaw-model-bootstrap-ci \
+            -c 'test -x /usr/local/bin/ollama && test -f /app/licenses/OLLAMA_LICENSE && test -f /app/THIRD_PARTY_NOTICES.md'
+
+      - name: 验证非 root 运行、本机端口绑定、健康状态和卷写入
+        run: |
+          docker volume create foliopaw-ci-data >/dev/null
+          docker volume create foliopaw-ci-uploads >/dev/null
+          trap 'docker rm -f foliopaw-ci >/dev/null 2>&1 || true; docker volume rm foliopaw-ci-data foliopaw-ci-uploads >/dev/null 2>&1 || true' EXIT
+          test "$(docker image inspect foliopaw-ci --format '{{.Config.User}}')" = "node"
+          docker run -d --name foliopaw-ci --read-only --tmpfs /tmp \
+            -p 127.0.0.1:17890:17891 \
+            -e HOST=0.0.0.0 \
+            -e DB_PATH=/app/backend/data/database.sqlite \
+            -e UPLOAD_DIR=/app/backend/uploads \
+            -e OLLAMA_BOOTSTRAP_ENABLED=false \
+            -v foliopaw-ci-data:/app/backend/data \
+            -v foliopaw-ci-uploads:/app/backend/uploads \
+            foliopaw-ci
+          test "$(docker inspect foliopaw-ci --format '{{(index (index .NetworkSettings.Ports "17891/tcp") 0).HostIp}}')" = "127.0.0.1"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:17890/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          docker logs foliopaw-ci
+          exit 1

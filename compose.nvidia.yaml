@@ -1,0 +1,7 @@
+services:
+  ollama:
+    gpus:
+      - driver: nvidia
+        count: all
+        capabilities:
+          - gpu

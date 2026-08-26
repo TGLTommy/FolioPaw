@@ -1,0 +1,47 @@
+{
+  "name": "@foliopaw/backend",
+  "version": "1.0.0",
+  "description": "FolioPaw 本地优先阅读与 AI 接口服务",
+  "private": true,
+  "license": "MIT",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "DB_PATH=:memory: UPLOAD_DIR=/tmp/foliopaw-test-uploads NODE_ENV=test vitest run",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.0",
+    "axios": "^1.19.0",
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "epub": "^2.1.1",
+    "express": "^5.2.1",
+    "helmet": "^8.3.0",
+    "multer": "^2.2.0",
+    "node-cache": "^5.1.2",
+    "pdfjs-dist": "5.4.296",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/adm-zip": "^0.5.8",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^26.3.0",
+    "@types/supertest": "^7.2.1",
+    "eslint": "^10.9.1",
+    "supertest": "^7.2.2",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
+  }
+}
