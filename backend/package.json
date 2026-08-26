@@ -1,6 +1,6 @@
 {
   "name": "@foliopaw/backend",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "FolioPaw 本地优先阅读与 AI 接口服务",
   "private": true,
   "license": "MIT",

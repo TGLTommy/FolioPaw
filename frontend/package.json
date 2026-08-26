@@ -1,7 +1,7 @@
 {
   "name": "@foliopaw/frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "FolioPaw EPUB/PDF 阅读器前端",
   "license": "MIT",
   "type": "module",

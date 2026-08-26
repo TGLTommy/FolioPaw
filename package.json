@@ -1,6 +1,6 @@
 {
   "name": "foliopaw",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "本地优先的 EPUB/PDF AI 阅读、翻译与问答工具",
   "private": true,
   "license": "MIT",
