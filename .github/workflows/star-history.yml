@@ -1,0 +1,47 @@
+name: 更新 Star 增长趋势
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  watch:
+    types: [started]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: star-history
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v6
+
+      - name: 使用 Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: 获取当前 Star 数并生成趋势图
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          STAR_HISTORY_REPOSITORY: ${{ github.repository }}
+        run: node scripts/update-star-history.mjs
+
+      - name: 仅在 Star 数变化时提交图表
+        run: |
+          git add docs/star-history
+          if git diff --cached --quiet; then
+            echo "Star 数没有变化，无需提交。"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update star history [skip ci]"
+          git push

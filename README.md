@@ -125,3 +125,17 @@ npm run check
 - [第三方组件与模型声明](THIRD_PARTY_NOTICES.md)
 
 项目采用 [MIT License](LICENSE)。
+
+## Star 增长趋势
+
+如果 FolioPaw 对你有帮助，欢迎[点亮一个 Star](https://github.com/TGLTommy/FolioPaw/stargazers)。下图会在 Star 数变化时自动更新，用于展示项目关注度的增长趋势。
+
+<p align="center">
+  <a href="https://github.com/TGLTommy/FolioPaw/stargazers">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/star-history/star-history-dark.svg" />
+      <source media="(prefers-color-scheme: light)" srcset="docs/star-history/star-history-light.svg" />
+      <img src="docs/star-history/star-history-light.svg" alt="FolioPaw GitHub Star 增长趋势" width="960" />
+    </picture>
+  </a>
+</p>
