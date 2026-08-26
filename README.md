@@ -10,6 +10,18 @@ FolioPaw 同时支持第三方模型 API 和本地 Ollama，数据使用 SQLite 
 
 > FolioPaw 按“单设备、单人书库”设计，没有账号和权限系统，请勿直接暴露到互联网。
 
+## 关注作者
+
+欢迎通过以下渠道关注我，获取更多技术分享与学习资源：
+
+- 官网：[TGLTommy.com](https://tgltommy.com/)
+- B站：[唐国梁Tommy](https://space.bilibili.com/474347248)
+- 微信公众号：**唐国梁TGLTommy**
+
+<p align="center">
+  <img src="docs/assets/wechat-official-account-qr.png" alt="唐国梁TGLTommy 微信公众号二维码" width="360" />
+</p>
+
 ## 主要功能
 
 - EPUB/PDF 导入、书架管理和阅读进度
