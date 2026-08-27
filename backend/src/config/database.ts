@@ -237,6 +237,18 @@ export function initDatabase() {
     )
   `);
 
+  // CRITICAL MIGRATION: book-level summaries store chapter_id as NULL, and
+  // SQLite treats NULLs as distinct inside a UNIQUE index. UNIQUE(book_id,
+  // summary_type, chapter_id) therefore never fires for them, so every
+  // regeneration inserted another row. Collapse the duplicates and back the
+  // upsert with a partial index that does constrain NULL chapter ids.
+  deduplicateBookLevelSummaries();
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_book_summaries_one_book_summary
+    ON book_summaries(book_id, summary_type)
+    WHERE chapter_id IS NULL
+  `);
+
   // Book reading guides table - AI-generated pre-translation reading decisions
   db.exec(`
     CREATE TABLE IF NOT EXISTS book_reading_guides (
@@ -869,6 +881,36 @@ export function cleanupOrphanedBookData(): void {
     }
   } catch (error) {
     console.warn('Orphaned book data cleanup warning:', error instanceof Error ? error.message : 'Unknown error');
+  }
+}
+
+/**
+ * Keeps one book-level summary per book, preferring a completed row over a
+ * failed or in-flight one, so the partial unique index can be created on
+ * databases written by earlier versions.
+ */
+export function deduplicateBookLevelSummaries(database: Database.Database = db): void {
+  const result = database.prepare(`
+    DELETE FROM book_summaries
+    WHERE summary_type = 'book'
+      AND chapter_id IS NULL
+      AND id NOT IN (
+        SELECT id FROM (
+          SELECT
+            id,
+            ROW_NUMBER() OVER (
+              PARTITION BY book_id
+              ORDER BY (status = 'completed') DESC, updated_at DESC, id DESC
+            ) AS row_rank
+          FROM book_summaries
+          WHERE summary_type = 'book' AND chapter_id IS NULL
+        )
+        WHERE row_rank = 1
+      )
+  `).run();
+
+  if (result.changes > 0) {
+    console.log(`Removed ${result.changes} duplicate book-level summary row(s)`);
   }
 }
 

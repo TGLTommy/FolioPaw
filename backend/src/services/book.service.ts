@@ -95,10 +95,15 @@ async function findExistingBookForUpload(
     }
   }
 
+  // Last resort for pre-hash records whose file is no longer on disk, so their
+  // hash can never be recomputed. Rows that DO have a hash were already checked
+  // above; matching them on name/type/size would discard a genuinely different
+  // upload that merely shares those attributes.
   return db.prepare(`
     SELECT id, filename, original_name, file_type, total_pages, table_of_contents
     FROM books
-    WHERE user_id = ? AND original_name = ? AND file_type = ? AND file_size = ?
+    WHERE user_id = ? AND file_hash IS NULL
+      AND original_name = ? AND file_type = ? AND file_size = ?
     ORDER BY upload_time DESC, id DESC
     LIMIT 1
   `).get(userId, originalName, fileType, fileSize) as any;

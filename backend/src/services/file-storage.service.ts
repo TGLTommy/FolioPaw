@@ -266,12 +266,10 @@ class FileStorageService {
       const uploadDir = this.config.uploadDir;
 
       if (fs.existsSync(uploadDir)) {
-        const files = fs.readdirSync(uploadDir);
-        files.forEach((file) => {
-          const fullPath = path.join(uploadDir, file);
-          const stats = fs.statSync(fullPath);
-          diskUsage += stats.size;
-        });
+        for (const entry of fs.readdirSync(uploadDir, { withFileTypes: true })) {
+          if (!entry.isFile()) continue;
+          diskUsage += fs.statSync(path.join(uploadDir, entry.name)).size;
+        }
       }
 
       // Get BLOB usage from database
@@ -319,18 +317,26 @@ class FileStorageService {
         return { deleted: 0 };
       }
 
-      const files = fs.readdirSync(uploadDir);
-      const dbFiles = db.prepare('SELECT file_path FROM books').all() as any[];
-      const dbFileSet = new Set(dbFiles.map((f) => path.basename(f.file_path)));
+      // Only plain files are book uploads. Generated assets live in
+      // subdirectories (epub-resources/, pdf-resources/) and are removed with
+      // their book, so unlinking a directory here would abort the whole sweep.
+      const entries = fs.readdirSync(uploadDir, { withFileTypes: true });
+      const dbFiles = db.prepare('SELECT file_path FROM books').all() as Array<{ file_path: string }>;
+      const dbFileSet = new Set(dbFiles.map((row) => path.basename(row.file_path)));
 
-      files.forEach((file) => {
-        if (!dbFileSet.has(file)) {
-          const fullPath = path.join(uploadDir, file);
+      for (const entry of entries) {
+        if (!entry.isFile() || dbFileSet.has(entry.name)) continue;
+
+        const fullPath = path.join(uploadDir, entry.name);
+        try {
           fs.unlinkSync(fullPath);
           deletedCount++;
-          console.log(`Deleted unused file: ${file}`);
+          console.log(`Deleted unused file: ${entry.name}`);
+        } catch (error) {
+          // Keep sweeping the rest of the directory instead of losing the batch.
+          console.warn(`Failed to delete unused file ${entry.name}:`, error instanceof Error ? error.message : error);
         }
-      });
+      }
 
       return { deleted: deletedCount };
     } catch (error) {
