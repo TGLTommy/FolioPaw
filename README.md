@@ -91,8 +91,11 @@ docker compose up -d
 ## 常用 Docker 命令
 
 ```bash
+# 查看各服务运行状态
 docker compose ps
+# 实时查看模型下载进度（首次启动需下载约 3GB 本地模型）
 docker compose logs -f model-bootstrap
+# 停止并移除容器
 docker compose down
 ```
 
