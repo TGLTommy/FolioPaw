@@ -17,6 +17,7 @@ import summaryRoutes from './routes/summary.routes';
 import mindmapRoutes from './routes/mindmap.routes';
 import readingGuideRoutes from './routes/reading-guide.routes';
 import modelServiceRoutes from './routes/model-service.routes';
+import ttsRoutes from './routes/tts.routes';
 
 export function createApp() {
   const app = express();
@@ -85,6 +86,7 @@ export function createApp() {
   app.use('/api/mindmap', mindmapRoutes);
   app.use('/api/reading-guide', readingGuideRoutes);
   app.use('/api/model-services', modelServiceRoutes);
+  app.use('/api/tts', ttsRoutes);
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ success: false, error: '接口不存在' });

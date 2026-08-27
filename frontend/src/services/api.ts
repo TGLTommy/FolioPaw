@@ -363,6 +363,12 @@ export const summaryApi = {
   },
 };
 
+// TTS API（Microsoft Edge 在线语音服务）
+export const ttsApi = {
+  speak: (text: string) =>
+    api.post<Blob>('/tts/speak', { text }, { responseType: 'blob', timeout: 60000 }),
+};
+
 // Reading Guide API
 export const readingGuideApi = {
   get: (bookId: number) =>

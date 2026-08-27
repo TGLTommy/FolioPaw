@@ -5,6 +5,8 @@ import type { Book, ReadingGuide } from '../types';
 import { readingGuideApi } from '../services/api';
 import { getApiErrorMessage } from '../utils/error';
 import { canUseBookTextFeatures } from '../utils/bookCapabilities';
+import { useTtsPlayer } from '../hooks/useTtsPlayer';
+import TtsSpeakButton from './TtsSpeakButton';
 
 interface ReadingGuideDialogProps {
   book: Book | null;
@@ -63,6 +65,13 @@ export default function ReadingGuideDialog({
   const [startingTranslation, setStartingTranslation] = useState(false);
   const [cancellingGuide, setCancellingGuide] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tts = useTtsPlayer();
+  const stopTts = tts.stop;
+
+  // 弹窗关闭时停止朗读
+  useEffect(() => {
+    if (!isOpen) stopTts();
+  }, [isOpen, stopTts]);
 
   const clearPoll = useCallback(() => {
     if (pollRef.current) {
@@ -222,19 +231,42 @@ export default function ReadingGuideDialog({
                 </div>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-              aria-label="关闭"
-            >
-              <X size={20} />
-            </button>
+            <div className="flex flex-shrink-0 items-center gap-1">
+              {guide?.status === 'completed' && (
+                <TtsSpeakButton
+                  player={tts}
+                  ttsId={`guide:${book.id}`}
+                  text={guide.guide_text}
+                  ariaLabel="朗读AI摘要"
+                  size={20}
+                  accent="blue"
+                  className="rounded-lg p-2"
+                />
+              )}
+              {tts.activeId != null && tts.status !== 'idle' && (
+                <button
+                  onClick={() => tts.stop()}
+                  aria-label="停止朗读"
+                  title="停止朗读"
+                  className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                >
+                  <Square size={18} />
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                aria-label="关闭"
+              >
+                <X size={20} />
+              </button>
+            </div>
           </div>
 
           <div className="reading-guide-scroll flex-1 overflow-y-auto bg-slate-50/80 px-4 py-6 sm:px-8">
-            {error && (
+            {(error || tts.error) && (
               <div className="mx-auto mb-4 max-w-4xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
+                {error || tts.error}
               </div>
             )}
 
