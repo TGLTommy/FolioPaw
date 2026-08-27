@@ -182,3 +182,39 @@ describe('segment failure retry', () => {
     expect(useTtsPlayerStore.getState().error).toBe('音频播放失败');
   });
 });
+
+describe('playback rate', () => {
+  it('defaults to 1x', () => {
+    expect(useTtsPlayerStore.getState().playbackRate).toBe(1);
+  });
+
+  it('applies the new rate to the currently playing audio', async () => {
+    const { result } = renderHook(() => useTtsPlayerStore());
+    await act(() => result.current.play('book', '正文'));
+
+    act(() => result.current.setPlaybackRate(1.5));
+
+    expect(result.current.playbackRate).toBe(1.5);
+    expect(FakeAudio.instances[0].playbackRate).toBe(1.5);
+  });
+
+  it('carries the rate over to subsequent segments', async () => {
+    const longText = '第一句内容。'.repeat(150); // 两段
+    const { result } = renderHook(() => useTtsPlayerStore());
+    await act(() => result.current.play('book', longText));
+
+    act(() => result.current.setPlaybackRate(2));
+    await act(async () => FakeAudio.instances[0].emit('ended'));
+    await waitFor(() => expect(FakeAudio.instances).toHaveLength(2));
+
+    expect(FakeAudio.instances[1].playbackRate).toBe(2);
+  });
+
+  it('persists the chosen rate to localStorage', () => {
+    const { result } = renderHook(() => useTtsPlayerStore());
+    act(() => result.current.setPlaybackRate(1.25));
+
+    expect(localStorage.getItem('foliopaw.tts.playbackRate')).toBe('1.25');
+    act(() => result.current.setPlaybackRate(1));
+  });
+});

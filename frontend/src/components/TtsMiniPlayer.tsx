@@ -1,5 +1,6 @@
 import { Pause, Play, Square, Volume2 } from 'lucide-react';
 import { useTtsPlayerStore } from '../stores/useTtsPlayerStore';
+import TtsRateButton from './TtsRateButton';
 
 /**
  * 全局迷你播放条：音频在后台播放/暂停时悬浮于右下角，关闭 AI 摘要弹窗后仍可控制播放。
@@ -24,6 +25,7 @@ export default function TtsMiniPlayer() {
         <p className="text-xs text-gray-500 dark:text-gray-400">{statusText}</p>
       </div>
       <div className="flex items-center gap-1">
+        <TtsRateButton />
         {tts.status === 'playing' && (
           <button
             onClick={() => tts.pause()}

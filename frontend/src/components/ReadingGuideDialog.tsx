@@ -7,6 +7,7 @@ import { getApiErrorMessage } from '../utils/error';
 import { canUseBookTextFeatures } from '../utils/bookCapabilities';
 import { useTtsPlayerStore } from '../stores/useTtsPlayerStore';
 import TtsSpeakButton from './TtsSpeakButton';
+import TtsRateButton from './TtsRateButton';
 
 interface ReadingGuideDialogProps {
   book: Book | null;
@@ -240,14 +241,17 @@ export default function ReadingGuideDialog({
                 />
               )}
               {tts.activeId != null && tts.status !== 'idle' && (
-                <button
-                  onClick={() => tts.stop()}
-                  aria-label="停止朗读"
-                  title="停止朗读"
-                  className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                >
-                  <Square size={18} />
-                </button>
+                <>
+                  <TtsRateButton className="rounded-lg px-2 py-2 text-xs font-semibold tabular-nums text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600" />
+                  <button
+                    onClick={() => tts.stop()}
+                    aria-label="停止朗读"
+                    title="停止朗读"
+                    className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                  >
+                    <Square size={18} />
+                  </button>
+                </>
               )}
               <button
                 onClick={onClose}
