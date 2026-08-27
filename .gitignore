@@ -58,3 +58,6 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+
+# Claude Code 本地工具配置
+.claude/
