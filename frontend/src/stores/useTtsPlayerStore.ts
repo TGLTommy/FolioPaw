@@ -83,7 +83,7 @@ function playSegmentAudio(url: string, seq: number, set: SetState): Promise<void
     });
     audio.addEventListener('error', () => {
       finishCurrentSegment = null;
-      reject(new Error('音频播放失败'));
+      reject(new Error(AUDIO_PLAYBACK_ERROR));
     });
 
     audio
@@ -98,7 +98,9 @@ function playSegmentAudio(url: string, seq: number, set: SetState): Promise<void
   });
 }
 
-/** 逐段播放队列：播放第 i 段的同时预取第 i+1 段 */
+const AUDIO_PLAYBACK_ERROR = '音频播放失败';
+
+/** 逐段播放队列：播放第 i 段的同时预取第 i+1 段；段音频损坏时重新合成该段一次 */
 async function runQueue(seq: number, segments: string[], firstUrl: string, set: SetState) {
   let url: string | null = firstUrl;
   try {
@@ -108,7 +110,20 @@ async function runQueue(seq: number, segments: string[], firstUrl: string, set: 
         return;
       }
       const nextUrlPromise = i + 1 < segments.length ? fetchSegmentUrl(segments[i + 1]) : null;
-      await playSegmentAudio(url!, seq, set);
+      try {
+        await playSegmentAudio(url!, seq, set);
+      } catch (err: unknown) {
+        if (seq !== requestSeq) return;
+        if (!(err instanceof Error) || err.message !== AUDIO_PLAYBACK_ERROR) throw err;
+        // 偶发的损坏音频（如上游中断产生的半截数据）：重新合成该段一次
+        releaseAudio();
+        const retryUrl = await fetchSegmentUrl(segments[i]);
+        if (seq !== requestSeq) {
+          URL.revokeObjectURL(retryUrl);
+          return;
+        }
+        await playSegmentAudio(retryUrl, seq, set);
+      }
       // 当前段正常播完：释放其资源（被 stop 释放时 releaseAudio 已处理）
       if (seq === requestSeq) {
         audioEl = null;
