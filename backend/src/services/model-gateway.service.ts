@@ -210,6 +210,7 @@ export class ModelGatewayService {
             { role: 'user', content: request.userMessage },
           ],
           ...(maxOutputTokens ? { max_tokens: maxOutputTokens } : {}),
+          ...(request.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
           stream: false,
         }, {
           headers: {
@@ -381,13 +382,24 @@ function buildSystemPrompt(request: ModelRequest): string {
 }
 
 function parseOpenAIText(data: unknown): string {
-  const content = (data as any)?.choices?.[0]?.message?.content;
+  const choice = (data as any)?.choices?.[0];
+  const content = choice?.message?.content;
   const text = typeof content === 'string'
     ? content
     : Array.isArray(content)
       ? content.map((part) => typeof part?.text === 'string' ? part.text : '').join('')
       : '';
-  if (!text.trim()) throw new ModelGatewayError('OpenAI 兼容服务没有返回文本内容', 502);
+  if (!text.trim()) {
+    // 思考型模型（如 DeepSeek）的思考也计入 max_tokens：预算被思考耗尽时最终答案为空
+    if (choice?.finish_reason === 'length') {
+      throw new ModelGatewayError('模型输出超出 max_tokens 限制被截断（思考型模型的思考内容也计入该限制），请重试或提高输出词元上限', 502);
+    }
+    const reasoning = choice?.message?.reasoning_content;
+    if (typeof reasoning === 'string' && reasoning.trim()) {
+      throw new ModelGatewayError('模型只返回了思考内容而没有最终答案，请重试', 502);
+    }
+    throw new ModelGatewayError('OpenAI 兼容服务没有返回文本内容', 502);
+  }
   return text.trim();
 }
 

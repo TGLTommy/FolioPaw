@@ -632,3 +632,87 @@ test('gateway enforces configured concurrency and honors queued cancellation', a
     assert.equal(results[2].reason.name, 'AbortError');
   }
 });
+
+test('OpenAI compatible adapter requests structured JSON output when responseFormat is json', async () => {
+  const captures: Array<{ body: any }> = [];
+  const transport: ModelHttpTransport = {
+    async post(_url, body) {
+      captures.push({ body });
+      return {
+        status: 200,
+        data: { model: 'm', choices: [{ message: { content: '{"pages":[]}' } }] },
+      };
+    },
+  };
+  const gateway = new ModelGatewayService(transport);
+  await gateway.call({
+    userMessage: '翻译',
+    maxTokens: 100,
+    responseFormat: 'json',
+  }, { config: makeConfig() });
+
+  assert.deepEqual(captures[0].body.response_format, { type: 'json_object' });
+});
+
+test('OpenAI compatible adapter omits response_format for plain text requests', async () => {
+  const captures: Array<{ body: any }> = [];
+  const transport: ModelHttpTransport = {
+    async post(_url, body) {
+      captures.push({ body });
+      return {
+        status: 200,
+        data: { model: 'm', choices: [{ message: { content: 'ok' } }] },
+      };
+    },
+  };
+  const gateway = new ModelGatewayService(transport);
+  await gateway.call({ userMessage: 'hi', maxTokens: 100 }, { config: makeConfig() });
+
+  assert.equal('response_format' in captures[0].body, false);
+});
+
+test('OpenAI compatible adapter explains output truncated by max_tokens instead of a generic empty error', async () => {
+  const transport: ModelHttpTransport = {
+    async post() {
+      return {
+        status: 200,
+        data: {
+          model: 'm',
+          choices: [{ finish_reason: 'length', message: { content: '', reasoning_content: '思考中……' } }],
+        },
+      };
+    },
+  };
+  const gateway = new ModelGatewayService(transport);
+  await assert.rejects(
+    gateway.call({ userMessage: '翻译', maxTokens: 100 }, { config: makeConfig() }),
+    (error: unknown) => {
+      assert.ok(error instanceof ModelGatewayError);
+      assert.match(error.message, /截断|max_tokens/);
+      return true;
+    },
+  );
+});
+
+test('OpenAI compatible adapter explains reasoning-only responses without a final answer', async () => {
+  const transport: ModelHttpTransport = {
+    async post() {
+      return {
+        status: 200,
+        data: {
+          model: 'm',
+          choices: [{ finish_reason: 'stop', message: { content: '', reasoning_content: '只有思考内容' } }],
+        },
+      };
+    },
+  };
+  const gateway = new ModelGatewayService(transport);
+  await assert.rejects(
+    gateway.call({ userMessage: '翻译', maxTokens: 100 }, { config: makeConfig() }),
+    (error: unknown) => {
+      assert.ok(error instanceof ModelGatewayError);
+      assert.match(error.message, /思考|最终答案/);
+      return true;
+    },
+  );
+});

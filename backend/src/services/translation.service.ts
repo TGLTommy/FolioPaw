@@ -494,7 +494,7 @@ async function translateFreshPageGroup(
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt < retryCount) {
-        console.warn('小批量翻译结果校验失败，准备重试');
+        console.warn(`小批量翻译结果校验失败，准备重试: ${lastError.message}`);
       }
     }
   }
@@ -557,7 +557,7 @@ async function translateHtmlPageGroupPreservingTags(
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt < retryCount) {
-        console.warn('HTML 分段翻译结果校验失败，准备重试');
+        console.warn(`HTML 分段翻译结果校验失败，准备重试: ${lastError.message}`);
       }
     }
   }
@@ -888,9 +888,19 @@ function rebuildHtmlTranslations(
   return translatedByPage;
 }
 
-function parseBatchTranslationResponse(text: string): ParsedTranslationPage[] {
+export function parseBatchTranslationResponse(text: string): ParsedTranslationPage[] {
   const candidate = extractJsonCandidate(text);
-  const parsed = JSON.parse(candidate) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(candidate) as unknown;
+  } catch (error: unknown) {
+    // 模型偶尔在 JSON 字符串值里输出未转义的裸换行；转义后重试，仍失败则抛出原始错误
+    try {
+      parsed = JSON.parse(escapeRawNewlinesInJsonStrings(candidate)) as unknown;
+    } catch {
+      throw error;
+    }
+  }
   const pages = Array.isArray(parsed)
     ? parsed
     : isRecord(parsed) && Array.isArray(parsed.pages)
@@ -910,6 +920,34 @@ function parseBatchTranslationResponse(text: string): ParsedTranslationPage[] {
     const translatedText = typeof page.translatedText === 'string' ? page.translatedText : '';
     return { pageNumber, translatedText };
   });
+}
+
+function escapeRawNewlinesInJsonStrings(candidate: string): string {
+  let result = '';
+  let inString = false;
+  for (let i = 0; i < candidate.length; i++) {
+    const char = candidate[i];
+    if (inString) {
+      if (char === '\\') {
+        result += char + (candidate[i + 1] ?? '');
+        i++;
+        continue;
+      }
+      if (char === '"') {
+        inString = false;
+        result += char;
+        continue;
+      }
+      if (char === '\n') { result += '\\n'; continue; }
+      if (char === '\r') { result += '\\r'; continue; }
+      if (char === '\t') { result += '\\t'; continue; }
+      result += char;
+      continue;
+    }
+    if (char === '"') inString = true;
+    result += char;
+  }
+  return result;
 }
 
 function extractJsonCandidate(text: string): string {
