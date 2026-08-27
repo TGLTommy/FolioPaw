@@ -179,7 +179,7 @@ describe('segment failure retry', () => {
     await act(async () => FakeAudio.instances[1].emit('error'));
 
     expect(useTtsPlayerStore.getState().status).toBe('idle');
-    expect(useTtsPlayerStore.getState().error).toBe('音频播放失败');
+    expect(useTtsPlayerStore.getState().error).toMatch(/^音频播放失败/);
   });
 });
 

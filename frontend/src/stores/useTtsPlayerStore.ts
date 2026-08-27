@@ -103,7 +103,16 @@ function playSegmentAudio(url: string, seq: number, set: SetState): Promise<void
     });
     audio.addEventListener('error', () => {
       finishCurrentSegment = null;
-      reject(new Error(AUDIO_PLAYBACK_ERROR));
+      // MediaError code：2=网络错误，3=解码失败，4=格式不受支持
+      const mediaError = (audio as HTMLAudioElement & { error?: MediaError | null }).error;
+      const detail = mediaError?.code === 3
+        ? '音频解码失败'
+        : mediaError?.code === 2
+          ? '音频加载网络错误'
+          : mediaError?.code === 4
+            ? '音频格式不受支持'
+            : '未知原因';
+      reject(new Error(`${AUDIO_PLAYBACK_ERROR}（${detail}）`));
     });
 
     audio
@@ -134,7 +143,7 @@ async function runQueue(seq: number, segments: string[], firstUrl: string, set: 
         await playSegmentAudio(url!, seq, set);
       } catch (err: unknown) {
         if (seq !== requestSeq) return;
-        if (!(err instanceof Error) || err.message !== AUDIO_PLAYBACK_ERROR) throw err;
+        if (!(err instanceof Error) || !err.message.startsWith(AUDIO_PLAYBACK_ERROR)) throw err;
         // 偶发的损坏音频（如上游中断产生的半截数据）：重新合成该段一次
         releaseAudio();
         const retryUrl = await fetchSegmentUrl(segments[i]);
