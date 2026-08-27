@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useTtsPlayer } from './useTtsPlayer';
+import { useTtsPlayerStore } from './useTtsPlayerStore';
 import { ttsApi } from '../services/api';
 import { FakeAudio, installFakeAudio } from '../test/fake-audio';
 
@@ -15,29 +15,32 @@ let revokeObjectURLMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   ({ revokeObjectURL: revokeObjectURLMock } = installFakeAudio());
-  speakMock.mockResolvedValue({ data: new Blob(['mp3']) });
+  speakMock.mockResolvedValue({ data: new Blob(['mp3']) } as never);
 });
 
 afterEach(() => {
+  act(() => useTtsPlayerStore.getState().stop());
+  act(() => useTtsPlayerStore.getState().clearError());
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
-describe('useTtsPlayer', () => {
-  it('plays synthesized audio and reports the active id', async () => {
-    const { result } = renderHook(() => useTtsPlayer());
+describe('useTtsPlayerStore', () => {
+  it('plays synthesized audio and reports the active id and label', async () => {
+    const { result } = renderHook(() => useTtsPlayerStore());
 
-    await act(() => result.current.play('book', '## 摘要正文'));
+    await act(() => result.current.play('book', '## 摘要正文', '全书摘要'));
 
     expect(speakMock).toHaveBeenCalledWith('## 摘要正文');
     expect(FakeAudio.instances).toHaveLength(1);
     expect(FakeAudio.instances[0].play).toHaveBeenCalled();
     expect(result.current.status).toBe('playing');
     expect(result.current.activeId).toBe('book');
+    expect(result.current.activeLabel).toBe('全书摘要');
   });
 
   it('pauses and resumes the active audio', async () => {
-    const { result } = renderHook(() => useTtsPlayer());
+    const { result } = renderHook(() => useTtsPlayerStore());
     await act(() => result.current.play('book', '正文'));
 
     act(() => result.current.pause());
@@ -50,7 +53,7 @@ describe('useTtsPlayer', () => {
   });
 
   it('stops playback and revokes the object URL', async () => {
-    const { result } = renderHook(() => useTtsPlayer());
+    const { result } = renderHook(() => useTtsPlayerStore());
     await act(() => result.current.play('book', '正文'));
 
     act(() => result.current.stop());
@@ -59,10 +62,11 @@ describe('useTtsPlayer', () => {
     expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:mock-audio');
     expect(result.current.status).toBe('idle');
     expect(result.current.activeId).toBeNull();
+    expect(result.current.activeLabel).toBeNull();
   });
 
   it('returns to idle when the audio finishes on its own', async () => {
-    const { result } = renderHook(() => useTtsPlayer());
+    const { result } = renderHook(() => useTtsPlayerStore());
     await act(() => result.current.play('book', '正文'));
 
     act(() => FakeAudio.instances[0].emit('ended'));
@@ -72,7 +76,7 @@ describe('useTtsPlayer', () => {
   });
 
   it('stops the previous audio when another id starts playing', async () => {
-    const { result } = renderHook(() => useTtsPlayer());
+    const { result } = renderHook(() => useTtsPlayerStore());
     await act(() => result.current.play('chapter-1', '第一章'));
     await act(() => result.current.play('chapter-2', '第二章'));
 
@@ -84,7 +88,7 @@ describe('useTtsPlayer', () => {
 
   it('reports an error and resets when synthesis fails', async () => {
     speakMock.mockRejectedValue(new Error('service down'));
-    const { result } = renderHook(() => useTtsPlayer());
+    const { result } = renderHook(() => useTtsPlayerStore());
 
     await act(() => result.current.play('book', '正文'));
 
@@ -99,20 +103,20 @@ describe('useTtsPlayer', () => {
         data: new Blob([JSON.stringify({ error: '朗读文本过长' })], { type: 'application/json' }),
       },
     });
-    const { result } = renderHook(() => useTtsPlayer());
+    const { result } = renderHook(() => useTtsPlayerStore());
 
     await act(() => result.current.play('book', '正文'));
 
     expect(result.current.error).toBe('朗读文本过长');
   });
 
-  it('stops playback when the component unmounts', async () => {
-    const { result, unmount } = renderHook(() => useTtsPlayer());
+  it('keeps playing after the consuming component unmounts', async () => {
+    const { result, unmount } = renderHook(() => useTtsPlayerStore());
     await act(() => result.current.play('book', '正文'));
 
     unmount();
 
-    expect(FakeAudio.instances[0].pause).toHaveBeenCalled();
-    expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:mock-audio');
+    expect(FakeAudio.instances[0].pause).not.toHaveBeenCalled();
+    expect(useTtsPlayerStore.getState().status).toBe('playing');
   });
 });

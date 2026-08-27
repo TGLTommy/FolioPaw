@@ -5,7 +5,7 @@ import type { Book, ReadingGuide } from '../types';
 import { readingGuideApi } from '../services/api';
 import { getApiErrorMessage } from '../utils/error';
 import { canUseBookTextFeatures } from '../utils/bookCapabilities';
-import { useTtsPlayer } from '../hooks/useTtsPlayer';
+import { useTtsPlayerStore } from '../stores/useTtsPlayerStore';
 import TtsSpeakButton from './TtsSpeakButton';
 
 interface ReadingGuideDialogProps {
@@ -65,13 +65,8 @@ export default function ReadingGuideDialog({
   const [startingTranslation, setStartingTranslation] = useState(false);
   const [cancellingGuide, setCancellingGuide] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const tts = useTtsPlayer();
-  const stopTts = tts.stop;
-
-  // 弹窗关闭时停止朗读
-  useEffect(() => {
-    if (!isOpen) stopTts();
-  }, [isOpen, stopTts]);
+  // 全局播放器：关闭弹窗后合成与播放在后台继续，由右下角迷你播放条控制
+  const tts = useTtsPlayerStore();
 
   const clearPoll = useCallback(() => {
     if (pollRef.current) {
@@ -238,9 +233,10 @@ export default function ReadingGuideDialog({
                   ttsId={`guide:${book.id}`}
                   text={guide.guide_text}
                   ariaLabel="朗读AI摘要"
-                  size={20}
+                  label={`AI摘要 · ${book.original_name}`}
+                  size={16}
                   accent="blue"
-                  className="rounded-lg p-2"
+                  variant="labeled"
                 />
               )}
               {tts.activeId != null && tts.status !== 'idle' && (

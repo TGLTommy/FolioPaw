@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SummaryPanel from './SummaryPanel';
 import { summaryApi, ttsApi } from '../services/api';
+import { useTtsPlayerStore } from '../stores/useTtsPlayerStore';
 import { FakeAudio, installFakeAudio } from '../test/fake-audio';
 
 vi.mock('../services/api', () => ({
@@ -69,6 +70,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  act(() => useTtsPlayerStore.getState().stop());
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -96,7 +98,7 @@ describe('SummaryPanel 朗读集成', () => {
     expect(FakeAudio.instances[0].pause).toHaveBeenCalled();
   });
 
-  it('closing the reading modal stops playback', async () => {
+  it('keeps playing in the background after the reading modal closes', async () => {
     renderPanel();
 
     // 打开阅读弹窗（点击摘要正文）
@@ -112,6 +114,7 @@ describe('SummaryPanel 朗读集成', () => {
     const closeButtons = screen.getAllByRole('button', { name: '关闭' });
     fireEvent.click(closeButtons[closeButtons.length - 1]);
 
-    expect(FakeAudio.instances[0].pause).toHaveBeenCalled();
+    expect(FakeAudio.instances[0].pause).not.toHaveBeenCalled();
+    expect(useTtsPlayerStore.getState().status).toBe('playing');
   });
 });

@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ReadingGuideDialog from './ReadingGuideDialog';
 import { readingGuideApi, ttsApi } from '../services/api';
 import type { Book, ReadingGuide } from '../types';
+import { useTtsPlayerStore } from '../stores/useTtsPlayerStore';
 import { FakeAudio, installFakeAudio } from '../test/fake-audio';
 
 vi.mock('../services/api', () => ({
@@ -69,6 +70,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  act(() => useTtsPlayerStore.getState().stop());
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -96,7 +98,7 @@ describe('ReadingGuideDialog 朗读集成', () => {
     expect(FakeAudio.instances[0].pause).toHaveBeenCalled();
   });
 
-  it('stops playback when the dialog closes', async () => {
+  it('keeps synthesizing and playing in the background after the dialog closes', async () => {
     const { rerender } = renderDialog();
     const speakButton = await screen.findByRole('button', { name: '朗读AI摘要' });
 
@@ -113,6 +115,7 @@ describe('ReadingGuideDialog 朗读集成', () => {
       />
     );
 
-    expect(FakeAudio.instances[0].pause).toHaveBeenCalled();
+    expect(FakeAudio.instances[0].pause).not.toHaveBeenCalled();
+    expect(useTtsPlayerStore.getState().status).toBe('playing');
   });
 });

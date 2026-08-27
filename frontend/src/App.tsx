@@ -6,6 +6,7 @@ import SettingsPage from './components/SettingsPage';
 import { BookOpen, Home, Menu, Settings, X } from 'lucide-react';
 import { ToastProvider } from './contexts/ToastContext';
 import { ToastContainer } from './components/Toast';
+import TtsMiniPlayer from './components/TtsMiniPlayer';
 import './App.css';
 
 type View = 'home' | 'reader' | 'settings';
@@ -135,6 +136,9 @@ function App() {
 
         {/* Toast notifications */}
         <ToastContainer />
+
+        {/* 全局语音朗读迷你播放条 */}
+        <TtsMiniPlayer />
       </div>
     </ToastProvider>
   );

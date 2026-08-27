@@ -3,7 +3,7 @@ import { X, FileText, BookOpen, ChevronRight, ChevronDown, Loader, CheckCircle, 
 import { summaryApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import { getErrorMessage } from '../utils/error';
-import { useTtsPlayer } from '../hooks/useTtsPlayer';
+import { useTtsPlayerStore } from '../stores/useTtsPlayerStore';
 import TtsSpeakButton from './TtsSpeakButton';
 
 interface ChapterRange {
@@ -63,20 +63,14 @@ export default function SummaryPanel({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const abortRef = useRef(false);
-  const tts = useTtsPlayer();
-  const stopTts = tts.stop;
+  // 全局播放器：关闭面板/弹窗后合成与播放在后台继续，由右下角迷你播放条控制
+  const tts = useTtsPlayerStore();
 
-  // 面板关闭时停止朗读
-  useEffect(() => {
-    if (!isOpen) stopTts();
-  }, [isOpen, stopTts]);
-
-  const renderSpeakButton = (id: string, text: string | null | undefined, ariaLabel: string, size = 14) => (
-    <TtsSpeakButton player={tts} ttsId={id} text={text} ariaLabel={ariaLabel} size={size} />
+  const renderSpeakButton = (id: string, text: string | null | undefined, ariaLabel: string, label: string, size = 14) => (
+    <TtsSpeakButton player={tts} ttsId={id} text={text} ariaLabel={ariaLabel} label={label} size={size} />
   );
 
   const closeReadingModal = () => {
-    tts.stop();
     setReadingItem(null);
   };
 
@@ -259,13 +253,12 @@ export default function SummaryPanel({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && readingItem) {
-        stopTts();
         setReadingItem(null);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [readingItem, stopTts]);
+  }, [readingItem]);
 
   const contentChapters = chapters.filter(c => c.isContent);
   const contentChapterIds = new Set(contentChapters.map(c => c.id));
@@ -303,7 +296,6 @@ export default function SummaryPanel({
       const ch = contentChapters[nextIdx];
       const s = getChapterSummary(ch.id);
       if (s?.status === 'completed' && s.summary_text) {
-        tts.stop();
         setReadingItem({
           type: 'chapter',
           title: ch.title,
@@ -420,7 +412,7 @@ export default function SummaryPanel({
                   </span>
                   {bookSummary?.status === 'completed' ? (
                     <div className="flex items-center gap-1">
-                      {renderSpeakButton('book', bookSummary.summary_text, '朗读全书摘要', 13)}
+                      {renderSpeakButton('book', bookSummary.summary_text, '朗读全书摘要', `全书摘要 · ${bookTitle}`, 13)}
                       <button
                         onClick={handleGenerateBook}
                         disabled={isGeneratingBook || isGeneratingAll}
@@ -534,7 +526,7 @@ export default function SummaryPanel({
                         </div>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
                           {chapterSummary?.status === 'completed' &&
-                            renderSpeakButton(`chapter:${chapter.id}`, chapterSummary.summary_text, `朗读「${chapter.title}」摘要`, 13)}
+                            renderSpeakButton(`chapter:${chapter.id}`, chapterSummary.summary_text, `朗读「${chapter.title}」摘要`, chapter.title, 13)}
                           {getStatusIcon(chapter.id)}
                           {!chapterSummary?.summary_text && !isGenerating && !isGeneratingAll && (
                             <button
@@ -623,6 +615,7 @@ export default function SummaryPanel({
                     readingItem.type === 'book' ? 'book' : `chapter:${contentChapters[readingItem.chapterIndex ?? -1]?.id ?? ''}`,
                     readingItem.content,
                     readingItem.type === 'book' ? '朗读全书摘要' : `朗读「${readingItem.title}」摘要`,
+                    readingItem.type === 'book' ? `全书摘要 · ${bookTitle}` : readingItem.title,
                     18,
                   )}
                   {tts.activeId != null && tts.status !== 'idle' && (
