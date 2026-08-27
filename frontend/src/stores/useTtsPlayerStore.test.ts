@@ -154,3 +154,31 @@ describe('useTtsPlayerStore', () => {
     expect(useTtsPlayerStore.getState().status).toBe('playing');
   });
 });
+
+describe('segment failure retry', () => {
+  it('re-synthesizes a segment once when its audio fails to play', async () => {
+    const { result } = renderHook(() => useTtsPlayerStore());
+    await act(() => result.current.play('book', '正文'));
+    expect(speakMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => FakeAudio.instances[0].emit('error'));
+
+    await waitFor(() => expect(speakMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(FakeAudio.instances).toHaveLength(2));
+    expect(FakeAudio.instances[1].play).toHaveBeenCalled();
+    expect(useTtsPlayerStore.getState().status).toBe('playing');
+    expect(useTtsPlayerStore.getState().error).toBeNull();
+  });
+
+  it('gives up with an error when the retried segment also fails', async () => {
+    const { result } = renderHook(() => useTtsPlayerStore());
+    await act(() => result.current.play('book', '正文'));
+
+    await act(async () => FakeAudio.instances[0].emit('error'));
+    await waitFor(() => expect(FakeAudio.instances).toHaveLength(2));
+    await act(async () => FakeAudio.instances[1].emit('error'));
+
+    expect(useTtsPlayerStore.getState().status).toBe('idle');
+    expect(useTtsPlayerStore.getState().error).toBe('音频播放失败');
+  });
+});

@@ -60,4 +60,19 @@ describe('POST /api/tts/speak', () => {
     const res = await request(app).post('/api/tts/speak').send({ text: '正文' }).expect(503);
     expect(res.body.error).toBe('语音服务暂时不可用，请稍后重试');
   });
+
+  it('returns 503 instead of a truncated 200 when the audio stream dies midway', async () => {
+    const audioStream = new Readable({ read() {} });
+    synthesizeMock.mockResolvedValue(audioStream);
+
+    const app = createApp();
+    const pending = request(app).post('/api/tts/speak').send({ text: '正文' });
+
+    audioStream.push(Buffer.from('partial-mp3'));
+    setTimeout(() => audioStream.destroy(new Error('websocket dropped')), 20);
+
+    const res = await pending;
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('语音服务暂时不可用，请稍后重试');
+  });
 });
