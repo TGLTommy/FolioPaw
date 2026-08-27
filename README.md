@@ -95,7 +95,9 @@ docker compose up -d
 docker compose ps
 # 实时查看模型下载进度（首次启动需下载约 3GB 本地模型）
 docker compose logs -f model-bootstrap
-# 停止并移除容器
+# 暂停使用：停止容器，之后用 docker compose start 恢复
+docker compose stop
+# 停止并移除容器（书库和模型数据保留在数据卷中）
 docker compose down
 ```
 
