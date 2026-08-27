@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, FileText, BookOpen, ChevronRight, ChevronDown, Loader, CheckCircle, Circle, AlertCircle, Trash2, Zap, RefreshCw, ArrowLeft, ArrowRight } from 'lucide-react';
+import { X, FileText, BookOpen, ChevronRight, ChevronDown, Loader, CheckCircle, Circle, AlertCircle, Trash2, Zap, RefreshCw, ArrowLeft, ArrowRight, Volume2, Pause, Square } from 'lucide-react';
 import { summaryApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import { getErrorMessage } from '../utils/error';
+import { useTtsPlayer } from '../hooks/useTtsPlayer';
 
 interface ChapterRange {
   id: string;
@@ -61,6 +62,53 @@ export default function SummaryPanel({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const abortRef = useRef(false);
+  const tts = useTtsPlayer();
+  const stopTts = tts.stop;
+
+  // 面板关闭时停止朗读
+  useEffect(() => {
+    if (!isOpen) stopTts();
+  }, [isOpen, stopTts]);
+
+  /** 朗读按钮：idle→播放，playing→暂停，paused→继续 */
+  const renderSpeakButton = (id: string, text: string | null | undefined, ariaLabel: string, size = 14) => {
+    if (!text) return null;
+    const isActive = tts.activeId === id;
+    const isLoading = isActive && tts.status === 'loading';
+    const isPlaying = isActive && tts.status === 'playing';
+    const label = isPlaying ? '暂停朗读' : isActive && tts.status === 'paused' ? '继续朗读' : ariaLabel;
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isPlaying) tts.pause();
+          else if (isActive && tts.status === 'paused') tts.resume();
+          else void tts.play(id, text);
+        }}
+        disabled={isLoading}
+        aria-label={label}
+        title={label}
+        className={`p-1.5 rounded-md transition-colors disabled:opacity-50 ${
+          isActive
+            ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/30'
+            : 'text-gray-400 hover:text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/30'
+        }`}
+      >
+        {isLoading ? (
+          <Loader size={size} className="animate-spin" />
+        ) : isPlaying ? (
+          <Pause size={size} />
+        ) : (
+          <Volume2 size={size} />
+        )}
+      </button>
+    );
+  };
+
+  const closeReadingModal = () => {
+    tts.stop();
+    setReadingItem(null);
+  };
 
   // Load summaries when panel opens
   const loadSummaries = useCallback(async () => {
@@ -241,12 +289,13 @@ export default function SummaryPanel({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && readingItem) {
+        stopTts();
         setReadingItem(null);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [readingItem]);
+  }, [readingItem, stopTts]);
 
   const contentChapters = chapters.filter(c => c.isContent);
   const contentChapterIds = new Set(contentChapters.map(c => c.id));
@@ -284,6 +333,7 @@ export default function SummaryPanel({
       const ch = contentChapters[nextIdx];
       const s = getChapterSummary(ch.id);
       if (s?.status === 'completed' && s.summary_text) {
+        tts.stop();
         setReadingItem({
           type: 'chapter',
           title: ch.title,
@@ -384,10 +434,10 @@ export default function SummaryPanel({
             </div>
           ) : (
             <>
-              {error && (
+              {(error || tts.error) && (
                 <div className="bg-red-50 dark:bg-red-950/30 border border-red-200/60 dark:border-red-800/40 rounded-xl p-3">
-                  <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-                  <button onClick={() => setError(null)} className="text-xs text-red-500 underline mt-1">关闭</button>
+                  <p className="text-red-600 dark:text-red-400 text-sm">{error || tts.error}</p>
+                  <button onClick={() => { setError(null); tts.clearError(); }} className="text-xs text-red-500 underline mt-1">关闭</button>
                 </div>
               )}
 
@@ -399,13 +449,16 @@ export default function SummaryPanel({
                     全书摘要
                   </span>
                   {bookSummary?.status === 'completed' ? (
-                    <button
-                      onClick={handleGenerateBook}
-                      disabled={isGeneratingBook || isGeneratingAll}
-                      className="text-xs px-2.5 py-1 rounded-md text-teal-600 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950/30 transition-colors disabled:opacity-50"
-                    >
-                      <RefreshCw size={12} className={isGeneratingBook ? 'animate-spin' : ''} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {renderSpeakButton('book', bookSummary.summary_text, '朗读全书摘要', 13)}
+                      <button
+                        onClick={handleGenerateBook}
+                        disabled={isGeneratingBook || isGeneratingAll}
+                        className="text-xs px-2.5 py-1 rounded-md text-teal-600 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950/30 transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw size={12} className={isGeneratingBook ? 'animate-spin' : ''} />
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={handleGenerateBook}
@@ -510,6 +563,8 @@ export default function SummaryPanel({
                           </button>
                         </div>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {chapterSummary?.status === 'completed' &&
+                            renderSpeakButton(`chapter:${chapter.id}`, chapterSummary.summary_text, `朗读「${chapter.title}」摘要`, 13)}
                           {getStatusIcon(chapter.id)}
                           {!chapterSummary?.summary_text && !isGenerating && !isGeneratingAll && (
                             <button
@@ -573,7 +628,7 @@ export default function SummaryPanel({
         <>
           <div
             className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
-            onClick={() => setReadingItem(null)}
+            onClick={closeReadingModal}
             style={{ animation: 'modalFadeIn 0.2s ease-out' }}
           />
           <div
@@ -593,13 +648,31 @@ export default function SummaryPanel({
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{readingItem.pageRange}</p>
                   )}
                 </div>
-                <button
-                  onClick={() => setReadingItem(null)}
-                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors flex-shrink-0"
-                  aria-label="关闭"
-                >
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {renderSpeakButton(
+                    readingItem.type === 'book' ? 'book' : `chapter:${contentChapters[readingItem.chapterIndex ?? -1]?.id ?? ''}`,
+                    readingItem.content,
+                    readingItem.type === 'book' ? '朗读全书摘要' : `朗读「${readingItem.title}」摘要`,
+                    18,
+                  )}
+                  {tts.activeId != null && tts.status !== 'idle' && (
+                    <button
+                      onClick={() => tts.stop()}
+                      aria-label="停止朗读"
+                      title="停止朗读"
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                    >
+                      <Square size={16} />
+                    </button>
+                  )}
+                  <button
+                    onClick={closeReadingModal}
+                    className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    aria-label="关闭"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               {/* Modal Content */}
