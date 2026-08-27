@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { getErrorMessage } from '../utils/error';
 import { useTtsPlayerStore } from '../stores/useTtsPlayerStore';
 import TtsSpeakButton from './TtsSpeakButton';
+import TtsRateButton from './TtsRateButton';
 
 interface ChapterRange {
   id: string;
@@ -619,14 +620,17 @@ export default function SummaryPanel({
                     18,
                   )}
                   {tts.activeId != null && tts.status !== 'idle' && (
-                    <button
-                      onClick={() => tts.stop()}
-                      aria-label="停止朗读"
-                      title="停止朗读"
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
-                    >
-                      <Square size={16} />
-                    </button>
+                    <>
+                      <TtsRateButton className="rounded-lg px-2 py-2 text-xs font-semibold tabular-nums text-gray-500 hover:bg-teal-50 hover:text-teal-600 dark:text-gray-400 dark:hover:bg-teal-950/30 transition-colors" />
+                      <button
+                        onClick={() => tts.stop()}
+                        aria-label="停止朗读"
+                        title="停止朗读"
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                      >
+                        <Square size={16} />
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={closeReadingModal}

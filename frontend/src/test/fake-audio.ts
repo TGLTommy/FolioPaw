@@ -7,6 +7,7 @@ export class FakeAudio {
   static instances: FakeAudio[] = [];
   src: string;
   paused = true;
+  playbackRate = 1;
   private listeners = new Map<string, Listener[]>();
   play = vi.fn(() => {
     this.paused = false;

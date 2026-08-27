@@ -19,16 +19,34 @@ async function extractErrorMessage(err: unknown): Promise<string> {
   return getErrorMessage(err, '语音朗读失败');
 }
 
+/** 可选播放倍速档位（循环切换顺序） */
+export const TTS_PLAYBACK_RATES = [1, 1.25, 1.5, 2, 0.75] as const;
+
+const PLAYBACK_RATE_STORAGE_KEY = 'foliopaw.tts.playbackRate';
+
+function readStoredPlaybackRate(): number {
+  try {
+    const stored = Number.parseFloat(localStorage.getItem(PLAYBACK_RATE_STORAGE_KEY) || '');
+    if (TTS_PLAYBACK_RATES.includes(stored as (typeof TTS_PLAYBACK_RATES)[number])) return stored;
+  } catch {
+    // 隐私模式等场景 localStorage 不可用，回退默认值
+  }
+  return 1;
+}
+
 interface TtsPlayerState {
   status: TtsStatus;
   activeId: string | null;
   /** 当前朗读内容的展示名称，用于全局迷你播放条 */
   activeLabel: string | null;
   error: string | null;
+  /** 播放倍速，作用于当前及后续所有段 */
+  playbackRate: number;
   play: (id: string, text: string, label?: string) => Promise<void>;
   pause: () => void;
   resume: () => void;
   stop: () => void;
+  setPlaybackRate: (rate: number) => void;
   clearError: () => void;
 }
 
@@ -43,6 +61,7 @@ export type TtsPlayer = Pick<
 let audioEl: HTMLAudioElement | null = null;
 let objectUrl: string | null = null;
 let requestSeq = 0;
+let currentPlaybackRate = readStoredPlaybackRate();
 // stop/切换时提前结束当前段的等待，让播放队列协程能立即退出
 let finishCurrentSegment: (() => void) | null = null;
 
@@ -73,6 +92,7 @@ type SetState = (partial: Partial<TtsPlayerState>) => void;
 function playSegmentAudio(url: string, seq: number, set: SetState): Promise<void> {
   return new Promise((resolve, reject) => {
     const audio = new Audio(url);
+    audio.playbackRate = currentPlaybackRate;
     objectUrl = url;
     audioEl = audio;
     finishCurrentSegment = resolve;
@@ -149,6 +169,7 @@ export const useTtsPlayerStore = create<TtsPlayerState>((set) => ({
   activeId: null,
   activeLabel: null,
   error: null,
+  playbackRate: currentPlaybackRate,
 
   play: async (id, text, label) => {
     const seq = ++requestSeq;
@@ -193,6 +214,17 @@ export const useTtsPlayerStore = create<TtsPlayerState>((set) => ({
     requestSeq += 1;
     releaseAudio();
     set({ status: 'idle', activeId: null, activeLabel: null });
+  },
+
+  setPlaybackRate: (rate) => {
+    currentPlaybackRate = rate;
+    if (audioEl) audioEl.playbackRate = rate;
+    try {
+      localStorage.setItem(PLAYBACK_RATE_STORAGE_KEY, String(rate));
+    } catch {
+      // localStorage 不可用时仅在本次会话内生效
+    }
+    set({ playbackRate: rate });
   },
 
   clearError: () => set({ error: null }),

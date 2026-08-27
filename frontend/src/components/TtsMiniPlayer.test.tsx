@@ -54,6 +54,20 @@ describe('TtsMiniPlayer', () => {
     expect(screen.getByRole('button', { name: '停止朗读' })).toBeTruthy();
   });
 
+  it('cycles playback rate and applies it to the audio', async () => {
+    render(<TtsMiniPlayer />);
+    await act(() => useTtsPlayerStore.getState().play('book', '正文', '全书摘要'));
+
+    const rateButton = screen.getByRole('button', { name: '播放倍速' });
+    expect(rateButton.textContent).toBe('1x');
+
+    fireEvent.click(rateButton);
+
+    expect(rateButton.textContent).toBe('1.25x');
+    expect(FakeAudio.instances[0].playbackRate).toBe(1.25);
+    act(() => useTtsPlayerStore.getState().setPlaybackRate(1));
+  });
+
   it('pauses via the pause control and disappears after stop', async () => {
     render(<TtsMiniPlayer />);
     await act(() => useTtsPlayerStore.getState().play('book', '正文', '全书摘要'));
