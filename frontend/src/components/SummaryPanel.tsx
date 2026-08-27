@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, FileText, BookOpen, ChevronRight, ChevronDown, Loader, CheckCircle, Circle, AlertCircle, Trash2, Zap, RefreshCw, ArrowLeft, ArrowRight, Volume2, Pause, Square } from 'lucide-react';
+import { X, FileText, BookOpen, ChevronRight, ChevronDown, Loader, CheckCircle, Circle, AlertCircle, Trash2, Zap, RefreshCw, ArrowLeft, ArrowRight, Square } from 'lucide-react';
 import { summaryApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import { getErrorMessage } from '../utils/error';
 import { useTtsPlayer } from '../hooks/useTtsPlayer';
+import TtsSpeakButton from './TtsSpeakButton';
 
 interface ChapterRange {
   id: string;
@@ -70,40 +71,9 @@ export default function SummaryPanel({
     if (!isOpen) stopTts();
   }, [isOpen, stopTts]);
 
-  /** 朗读按钮：idle→播放，playing→暂停，paused→继续 */
-  const renderSpeakButton = (id: string, text: string | null | undefined, ariaLabel: string, size = 14) => {
-    if (!text) return null;
-    const isActive = tts.activeId === id;
-    const isLoading = isActive && tts.status === 'loading';
-    const isPlaying = isActive && tts.status === 'playing';
-    const label = isPlaying ? '暂停朗读' : isActive && tts.status === 'paused' ? '继续朗读' : ariaLabel;
-    return (
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          if (isPlaying) tts.pause();
-          else if (isActive && tts.status === 'paused') tts.resume();
-          else void tts.play(id, text);
-        }}
-        disabled={isLoading}
-        aria-label={label}
-        title={label}
-        className={`p-1.5 rounded-md transition-colors disabled:opacity-50 ${
-          isActive
-            ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/30'
-            : 'text-gray-400 hover:text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/30'
-        }`}
-      >
-        {isLoading ? (
-          <Loader size={size} className="animate-spin" />
-        ) : isPlaying ? (
-          <Pause size={size} />
-        ) : (
-          <Volume2 size={size} />
-        )}
-      </button>
-    );
-  };
+  const renderSpeakButton = (id: string, text: string | null | undefined, ariaLabel: string, size = 14) => (
+    <TtsSpeakButton player={tts} ttsId={id} text={text} ariaLabel={ariaLabel} size={size} />
+  );
 
   const closeReadingModal = () => {
     tts.stop();
