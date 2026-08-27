@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type TouchEvent } from 'react';
 import { useBookStore } from '../stores/useBookStore';
 import { bookApi, translationApi } from '../services/api';
-import { ChevronLeft, ChevronRight, Loader, Home, AlertCircle, Menu, X, Maximize2, Minimize2, Languages, BookOpen, SunMedium, Leaf, Moon, Coffee, MonitorSmartphone, Sparkles, FileText, Network, Settings } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, Loader, Home, AlertCircle, Menu, X, Maximize2, Minimize2, Languages, BookOpen, SunMedium, Leaf, Moon, Coffee, MonitorSmartphone, Sparkles, FileText, Network, Settings } from 'lucide-react';
 import { TableOfContents, type TOCEntry } from './TableOfContents';
 import PdfReaderPane from './PdfReaderPane';
 import AiChatPanel from './AiChatPanel';
@@ -1681,6 +1681,14 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
                 className="reader-icon-button p-1.5 rounded-lg transition-colors"
                 title="隐藏工具栏（点击页面顶部显示）"
                 aria-label="隐藏工具栏"
+              >
+                <ChevronUp size={18} />
+              </button>
+              <button
+                onClick={handleNavigateHome}
+                className="reader-icon-button p-1.5 rounded-lg transition-colors"
+                title="关闭并返回首页"
+                aria-label="关闭并返回首页"
               >
                 <X size={18} />
               </button>
