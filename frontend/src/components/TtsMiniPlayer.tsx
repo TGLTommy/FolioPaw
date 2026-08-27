@@ -1,25 +1,21 @@
-import { Loader, Pause, Play, Square, Volume2 } from 'lucide-react';
+import { Pause, Play, Square, Volume2 } from 'lucide-react';
 import { useTtsPlayerStore } from '../stores/useTtsPlayerStore';
 
 /**
- * 全局迷你播放条：朗读在后台进行时（合成中/播放中/已暂停）悬浮于右下角，
- * 关闭 AI 摘要弹窗后仍可控制播放。
+ * 全局迷你播放条：音频在后台播放/暂停时悬浮于右下角，关闭 AI 摘要弹窗后仍可控制播放。
+ * 合成中不显示（弹窗按钮上已有「正在合成…」提示），待播放真正开始后出现。
  */
 export default function TtsMiniPlayer() {
   const tts = useTtsPlayerStore();
 
-  if (tts.status === 'idle') return null;
+  if (tts.status !== 'playing' && tts.status !== 'paused') return null;
 
-  const statusText = tts.status === 'loading' ? '正在合成…' : tts.status === 'playing' ? '播放中' : '已暂停';
+  const statusText = tts.status === 'playing' ? '播放中' : '已暂停';
 
   return (
     <div className="fixed bottom-4 right-4 z-[80] flex items-center gap-3 rounded-full border border-blue-200 bg-white/95 py-2 pl-4 pr-2 shadow-lg shadow-blue-600/10 backdrop-blur dark:border-blue-900 dark:bg-gray-900/95">
       <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
-        {tts.status === 'loading' ? (
-          <Loader size={15} className="animate-spin" />
-        ) : (
-          <Volume2 size={15} className={tts.status === 'playing' ? 'animate-pulse' : ''} />
-        )}
+        <Volume2 size={15} className={tts.status === 'playing' ? 'animate-pulse' : ''} />
       </div>
       <div className="min-w-0">
         <p className="max-w-[220px] truncate text-sm font-medium text-gray-900 dark:text-gray-100">
