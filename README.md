@@ -27,6 +27,7 @@ FolioPaw 同时支持第三方模型 API 和本地 Ollama，数据使用 SQLite 
 - EPUB/PDF 导入、书架管理和阅读进度
 - 单页翻译与后台批量翻译
 - 章节/全书摘要、阅读导读和思维导图
+- AI 摘要语音朗读：免费的 Microsoft Edge 在线语音，支持后台播放与倍速调节
 - 基于当前页和全书内容的 AI 问答
 - OpenAI 兼容、Anthropic 兼容和 Ollama 本地模型
 
@@ -36,7 +37,6 @@ FolioPaw 同时支持第三方模型 API 和本地 Ollama，数据使用 SQLite 
 
 后续计划包括但不限于：
 
-- TTS 语音朗读
 - 可检索的个人知识库
 - 多用户、多账号与权限支持
 - 来自社区反馈和 Pull Request 的其他功能
