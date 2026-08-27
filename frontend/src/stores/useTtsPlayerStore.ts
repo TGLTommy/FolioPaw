@@ -83,7 +83,20 @@ function releaseAudio() {
 
 async function fetchSegmentUrl(segment: string): Promise<string> {
   const res = await ttsApi.speak(segment);
-  return URL.createObjectURL(res.data);
+  // Safari/WebKit 对 MIME 类型缺失的 blob 会报「格式不受支持」，显式声明类型
+  return URL.createObjectURL(new Blob([res.data], { type: 'audio/mpeg' }));
+}
+
+/** 重试路径：data: URL 自带 MIME 类型，是 WebKit 兼容性最好的音频加载方式 */
+async function fetchSegmentDataUrl(segment: string): Promise<string> {
+  const res = await ttsApi.speak(segment);
+  const blob = new Blob([res.data], { type: 'audio/mpeg' });
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error('音频读取失败'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 type SetState = (partial: Partial<TtsPlayerState>) => void;
@@ -144,13 +157,11 @@ async function runQueue(seq: number, segments: string[], firstUrl: string, set: 
       } catch (err: unknown) {
         if (seq !== requestSeq) return;
         if (!(err instanceof Error) || !err.message.startsWith(AUDIO_PLAYBACK_ERROR)) throw err;
-        // 偶发的损坏音频（如上游中断产生的半截数据）：重新合成该段一次
+        // 音频加载失败（损坏数据或浏览器对 blob URL 的兼容问题）：
+        // 重新合成该段一次，并改用 data: URL 加载
         releaseAudio();
-        const retryUrl = await fetchSegmentUrl(segments[i]);
-        if (seq !== requestSeq) {
-          URL.revokeObjectURL(retryUrl);
-          return;
-        }
+        const retryUrl = await fetchSegmentDataUrl(segments[i]);
+        if (seq !== requestSeq) return;
         await playSegmentAudio(retryUrl, seq, set);
       }
       // 当前段正常播完：释放其资源（被 stop 释放时 releaseAudio 已处理）

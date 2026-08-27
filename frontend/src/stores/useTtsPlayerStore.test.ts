@@ -165,6 +165,8 @@ describe('segment failure retry', () => {
 
     await waitFor(() => expect(speakMock).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(FakeAudio.instances).toHaveLength(2));
+    // 重试段改用 data: URL 加载（WebKit 对 blob URL 的 MIME 处理最严格）
+    expect(FakeAudio.instances[1].src.startsWith('data:audio/mpeg')).toBe(true);
     expect(FakeAudio.instances[1].play).toHaveBeenCalled();
     expect(useTtsPlayerStore.getState().status).toBe('playing');
     expect(useTtsPlayerStore.getState().error).toBeNull();
