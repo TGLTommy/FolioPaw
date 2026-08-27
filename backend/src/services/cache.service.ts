@@ -18,7 +18,19 @@ interface CacheStats {
   memoryUsage: number;
 }
 
-class CacheService {
+export interface CacheServiceOptions {
+  ttlSeconds?: number;
+  maxEntries?: number;
+}
+
+// Share of the memory cache dropped when node-cache reports it is full.
+const EVICTION_RATIO = 0.1;
+
+function isCacheFullError(error: unknown): boolean {
+  return (error as { errorcode?: string } | null)?.errorcode === 'ECACHEFULL';
+}
+
+export class CacheService {
   private cache: NodeCache;
   private initialized = false;
   private stats: CacheStats = {
@@ -30,16 +42,56 @@ class CacheService {
     memoryUsage: 0,
   };
 
-  constructor() {
-    const cacheTtl = parseInt(process.env.CACHE_TTL || '3600'); // 1 hour default
-    const cacheMaxEntries = parseInt(process.env.CACHE_MAX_ENTRIES || '1000');
+  constructor(options: CacheServiceOptions = {}) {
+    const cacheTtl = options.ttlSeconds ?? parseInt(process.env.CACHE_TTL || '3600'); // 1 hour default
+    const cacheMaxEntries = options.maxEntries ?? parseInt(process.env.CACHE_MAX_ENTRIES || '1000');
 
     this.cache = new NodeCache({
       stdTTL: cacheTtl,
-      checkperiod: Math.floor(cacheTtl / 10),
+      // A checkperiod of 0 disables expiry sweeps entirely, which would let the
+      // cache stay permanently full once it fills up.
+      checkperiod: Math.max(1, Math.floor(cacheTtl / 10)),
       maxKeys: cacheMaxEntries,
     });
 
+  }
+
+  /**
+   * node-cache throws ECACHEFULL once maxKeys is reached - even when the key
+   * already exists. Evict the entries closest to expiry and retry so a full
+   * memory cache degrades to "database cache only" instead of failing the
+   * caller, which would otherwise surface as a failed translation.
+   */
+  private rememberInMemory(cacheKey: string, entry: CacheEntry): void {
+    if (this.trySetInMemory(cacheKey, entry)) return;
+
+    this.evictEntriesClosestToExpiry();
+    if (this.trySetInMemory(cacheKey, entry)) return;
+
+    console.warn('Memory cache is full; this translation stays in the database cache only');
+  }
+
+  private trySetInMemory(cacheKey: string, entry: CacheEntry): boolean {
+    try {
+      return this.cache.set(cacheKey, entry);
+    } catch (error) {
+      if (isCacheFullError(error)) return false;
+      throw error;
+    }
+  }
+
+  private evictEntriesClosestToExpiry(): void {
+    const keys = this.cache.keys();
+    if (keys.length === 0) return;
+
+    const evictionCount = Math.max(1, Math.ceil(keys.length * EVICTION_RATIO));
+    const orderedByExpiry = keys
+      .map((key) => ({ key, expiresAt: this.cache.getTtl(key) ?? 0 }))
+      .sort((left, right) => left.expiresAt - right.expiresAt);
+
+    for (const { key } of orderedByExpiry.slice(0, evictionCount)) {
+      this.cache.del(key);
+    }
   }
 
   initialize(): void {
@@ -100,7 +152,7 @@ class CacheService {
         };
 
         // Populate memory cache from database
-        this.cache.set(cacheKey, entry);
+        this.rememberInMemory(cacheKey, entry);
         this.stats.databaseHits++;
         this.updateCacheStats();
         return entry;
@@ -136,7 +188,7 @@ class CacheService {
     };
 
     // Store in memory cache
-    this.cache.set(cacheKey, entry);
+    this.rememberInMemory(cacheKey, entry);
 
     // Store in database cache
     try {

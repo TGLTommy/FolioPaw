@@ -443,6 +443,22 @@ export class SummaryService {
   }
 
   /**
+   * Marks the single book-level summary row as generating, creating it on first
+   * use. Book summaries carry a NULL chapter_id, which SQLite treats as
+   * distinct inside UNIQUE(book_id, summary_type, chapter_id); the conflict
+   * target is therefore the partial index that does constrain NULL chapter ids,
+   * otherwise every regeneration would append another row.
+   */
+  beginBookSummary(bookId: number, totalPages: number): void {
+    db.prepare(`
+      INSERT INTO book_summaries (book_id, summary_type, chapter_id, page_start, page_end, status)
+      VALUES (?, 'book', NULL, 1, ?, 'generating')
+      ON CONFLICT(book_id, summary_type) WHERE chapter_id IS NULL DO UPDATE SET
+        status = 'generating', error_message = NULL, updated_at = CURRENT_TIMESTAMP
+    `).run(bookId, totalPages);
+  }
+
+  /**
    * Generate book-level summary
    */
   async generateBookSummary(
@@ -454,13 +470,7 @@ export class SummaryService {
     const book = db.prepare('SELECT * FROM books WHERE id = ?').get(bookId) as any;
     if (!book) throw new Error('书籍不存在');
 
-    // Upsert pending record
-    db.prepare(`
-      INSERT INTO book_summaries (book_id, summary_type, chapter_id, page_start, page_end, status)
-      VALUES (?, 'book', NULL, 1, ?, 'generating')
-      ON CONFLICT(book_id, summary_type, chapter_id) DO UPDATE SET
-        status = 'generating', error_message = NULL, updated_at = CURRENT_TIMESTAMP
-    `).run(bookId, book.total_pages);
+    this.beginBookSummary(bookId, book.total_pages);
 
     try {
       // Check if chapter summaries exist — synthesize from them if so
