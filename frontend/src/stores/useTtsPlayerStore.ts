@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { ttsApi } from '../services/api';
 import { getErrorMessage } from '../utils/error';
+import { splitTextForTts } from '../utils/ttsSegments';
 
 export type TtsStatus = 'idle' | 'loading' | 'playing' | 'paused';
 
@@ -37,10 +38,13 @@ export type TtsPlayer = Pick<
   'status' | 'activeId' | 'error' | 'play' | 'pause' | 'resume' | 'stop' | 'clearError'
 >;
 
-// 音频元素放在模块级：合成与播放不随任何组件卸载而中断，直到播完或用户手动停止
+// 音频元素放在模块级：合成与播放不随任何组件卸载而中断，直到播完或用户手动停止。
+// 长文本按句子分段合成：首段几秒内开播，播放时预取下一段，避免整段合成的漫长等待与超时。
 let audioEl: HTMLAudioElement | null = null;
 let objectUrl: string | null = null;
 let requestSeq = 0;
+// stop/切换时提前结束当前段的等待，让播放队列协程能立即退出
+let finishCurrentSegment: (() => void) | null = null;
 
 function releaseAudio() {
   if (audioEl) {
@@ -50,6 +54,78 @@ function releaseAudio() {
   if (objectUrl) {
     URL.revokeObjectURL(objectUrl);
     objectUrl = null;
+  }
+  if (finishCurrentSegment) {
+    const finish = finishCurrentSegment;
+    finishCurrentSegment = null;
+    finish();
+  }
+}
+
+async function fetchSegmentUrl(segment: string): Promise<string> {
+  const res = await ttsApi.speak(segment);
+  return URL.createObjectURL(res.data);
+}
+
+type SetState = (partial: Partial<TtsPlayerState>) => void;
+
+/** 播放一段音频；在播完、出错或被 stop 释放时结束 */
+function playSegmentAudio(url: string, seq: number, set: SetState): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(url);
+    objectUrl = url;
+    audioEl = audio;
+    finishCurrentSegment = resolve;
+
+    audio.addEventListener('ended', () => {
+      finishCurrentSegment = null;
+      resolve();
+    });
+    audio.addEventListener('error', () => {
+      finishCurrentSegment = null;
+      reject(new Error('音频播放失败'));
+    });
+
+    audio
+      .play()
+      .then(() => {
+        if (seq === requestSeq) set({ status: 'playing' });
+      })
+      .catch((err) => {
+        finishCurrentSegment = null;
+        reject(err);
+      });
+  });
+}
+
+/** 逐段播放队列：播放第 i 段的同时预取第 i+1 段 */
+async function runQueue(seq: number, segments: string[], firstUrl: string, set: SetState) {
+  let url: string | null = firstUrl;
+  try {
+    for (let i = 0; i < segments.length; i++) {
+      if (seq !== requestSeq) {
+        if (url) URL.revokeObjectURL(url);
+        return;
+      }
+      const nextUrlPromise = i + 1 < segments.length ? fetchSegmentUrl(segments[i + 1]) : null;
+      await playSegmentAudio(url!, seq, set);
+      // 当前段正常播完：释放其资源（被 stop 释放时 releaseAudio 已处理）
+      if (seq === requestSeq) {
+        audioEl = null;
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrl = null;
+        }
+      }
+      url = nextUrlPromise ? await nextUrlPromise : null;
+    }
+    if (seq !== requestSeq) return;
+    set({ status: 'idle', activeId: null, activeLabel: null });
+  } catch (err: unknown) {
+    const message = await extractErrorMessage(err);
+    if (seq !== requestSeq) return;
+    releaseAudio();
+    set({ status: 'idle', activeId: null, activeLabel: null, error: message });
   }
 }
 
@@ -64,30 +140,18 @@ export const useTtsPlayerStore = create<TtsPlayerState>((set) => ({
     releaseAudio();
     set({ error: null, status: 'loading', activeId: id, activeLabel: label ?? null });
 
+    // 空白文本保持整段直传，让后端返回统一的中文校验报错
+    const segments = splitTextForTts(text);
+    const queue = segments.length > 0 ? segments : [text];
+
     try {
-      const res = await ttsApi.speak(text);
+      const firstUrl = await fetchSegmentUrl(queue[0]);
       // 请求返回前用户已切换/停止，丢弃过期音频
-      if (seq !== requestSeq) return;
-
-      const url = URL.createObjectURL(res.data);
-      const audio = new Audio(url);
-      objectUrl = url;
-      audioEl = audio;
-
-      audio.addEventListener('ended', () => {
-        if (seq !== requestSeq) return;
-        releaseAudio();
-        set({ status: 'idle', activeId: null, activeLabel: null });
-      });
-      audio.addEventListener('error', () => {
-        if (seq !== requestSeq) return;
-        releaseAudio();
-        set({ status: 'idle', activeId: null, activeLabel: null, error: '音频播放失败' });
-      });
-
-      await audio.play();
-      if (seq !== requestSeq) return;
-      set({ status: 'playing' });
+      if (seq !== requestSeq) {
+        URL.revokeObjectURL(firstUrl);
+        return;
+      }
+      void runQueue(seq, queue, firstUrl, set);
     } catch (err: unknown) {
       const message = await extractErrorMessage(err);
       if (seq !== requestSeq) return;
