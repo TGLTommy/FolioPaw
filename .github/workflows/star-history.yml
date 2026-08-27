@@ -41,7 +41,7 @@ jobs:
             echo "Star 数没有变化，无需提交。"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "TGLTommy"
+          git config user.email "tangtommy930@gmail.com"
           git commit -m "chore: update star history [skip ci]"
           git push
