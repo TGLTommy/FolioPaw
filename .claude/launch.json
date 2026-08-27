@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "foliopaw-main-dev",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PORT=17891", "npm", "run", "dev", "--prefix", "/Users/tangguoliang/Desktop/Ideas/FolioPaw"],
+      "port": 17890
+    }
+  ]
+}

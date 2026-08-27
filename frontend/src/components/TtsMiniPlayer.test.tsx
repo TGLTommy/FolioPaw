@@ -31,6 +31,18 @@ describe('TtsMiniPlayer', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('renders nothing while synthesizing', async () => {
+    speakMock.mockReturnValue(new Promise(() => {}) as never);
+    const { container } = render(<TtsMiniPlayer />);
+
+    await act(async () => {
+      void useTtsPlayerStore.getState().play('book', '正文', '全书摘要');
+    });
+
+    expect(useTtsPlayerStore.getState().status).toBe('loading');
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it('shows the playing label with pause and stop controls', async () => {
     render(<TtsMiniPlayer />);
 
