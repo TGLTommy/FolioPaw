@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBatchTranslationResponse } from './translation.service';
+import { getTranslationMaxTokens, parseBatchTranslationResponse } from './translation.service';
 
 describe('parseBatchTranslationResponse', () => {
   it('parses a well-formed pages payload', () => {
@@ -17,5 +17,15 @@ describe('parseBatchTranslationResponse', () => {
   it('still rejects output that is truncated mid-string', () => {
     const raw = '{"pages":[{"pageNumber":9,"translatedText":"第一段';
     expect(() => parseBatchTranslationResponse(raw)).toThrow();
+  });
+});
+
+describe('getTranslationMaxTokens', () => {
+  it('gives a single page enough budget for reasoning models', () => {
+    expect(getTranslationMaxTokens(1)).toBe(8000);
+  });
+
+  it('caps multi-page batches at the configured maximum', () => {
+    expect(getTranslationMaxTokens(3)).toBe(12000);
   });
 });

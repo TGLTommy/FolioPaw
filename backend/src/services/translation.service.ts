@@ -1104,13 +1104,15 @@ function getTranslationRetryCount(): number {
   return Math.min(parsed, 3);
 }
 
-function getTranslationMaxTokens(pageCount: number): number {
+export function getTranslationMaxTokens(pageCount: number): number {
   const parsed = Number.parseInt(process.env.TRANSLATION_MAX_TOKENS || '', 10);
   if (Number.isFinite(parsed) && parsed > 0) {
     return parsed;
   }
 
-  return Math.min(12000, Math.max(4000, pageCount * 4000));
+  // 基线 8000：思考型模型（如 DeepSeek）的思考内容也计入 max_tokens，
+  // 4000 会被长思考整个耗尽，导致最终答案为空
+  return Math.min(12000, Math.max(8000, pageCount * 4000));
 }
 
 async function persistFreshTranslation(
