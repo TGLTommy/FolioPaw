@@ -8,6 +8,10 @@
 
 - README 新增自动更新的 Star 增长趋势图，使用仓库自身的 GitHub Actions 记录变化，不需要在公开文档中嵌入访问令牌。
 
+### 移除
+
+- Dependabot 依赖更新配置。依赖升级改为手动进行；生产依赖漏洞仍由 `npm run check` 中的 `npm audit --omit=dev --audit-level=high` 兜底。
+
 ## [0.0.1] - 2026-08-26
 
 ### 新增
