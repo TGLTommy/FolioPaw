@@ -79,7 +79,52 @@ describe('ttsService.synthesize', () => {
 
     expect(setMetadataMock).toHaveBeenCalledWith(DEFAULT_TTS_VOICE, expect.anything());
     expect(toStreamMock).toHaveBeenCalledWith('标题\n正文内容。');
-    expect(stream).toBe(audioStream);
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
+    expect(Buffer.concat(chunks).toString()).toBe('mp3-bytes');
+  });
+
+  it('escapes XML special characters before sending to the speech engine', async () => {
+    const audioStream = Readable.from([Buffer.from('mp3-bytes')]);
+    toStreamMock.mockReturnValue({ audioStream, metadataStream: null });
+
+    await ttsService.synthesize('损失下降 30% & 准确率 <90% 或 >95%。');
+
+    expect(toStreamMock).toHaveBeenCalledWith('损失下降 30% &amp; 准确率 &lt;90% 或 &gt;95%。');
+  });
+
+  it('emits an error instead of ending silently when no audio is produced', async () => {
+    const emptyStream = Readable.from([]);
+    toStreamMock.mockReturnValue({ audioStream: emptyStream, metadataStream: null });
+
+    const stream = await ttsService.synthesize('正文内容。');
+    const outcome = await new Promise<string>((resolve) => {
+      stream.on('data', () => {});
+      stream.on('end', () => resolve('end'));
+      stream.on('error', (err) => resolve(`error: ${err.message}`));
+    });
+
+    expect(outcome).toBe('error: 语音服务未返回音频，请稍后重试');
+  });
+
+  it('still ends normally when audio bytes were produced', async () => {
+    const audioStream = Readable.from([Buffer.from('mp3-bytes')]);
+    toStreamMock.mockReturnValue({ audioStream, metadataStream: null });
+
+    const stream = await ttsService.synthesize('正文内容。');
+    const chunks: Buffer[] = [];
+    const outcome = await new Promise<string>((resolve) => {
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('end', () => resolve('end'));
+      stream.on('error', (err) => resolve(`error: ${err.message}`));
+    });
+
+    expect(outcome).toBe('end');
+    expect(Buffer.concat(chunks).toString()).toBe('mp3-bytes');
   });
 
   it('closes the connection once the audio stream ends', async () => {

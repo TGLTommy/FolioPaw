@@ -1,4 +1,4 @@
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 export const DEFAULT_TTS_VOICE = 'zh-CN-XiaoxiaoNeural';
@@ -36,6 +36,11 @@ export function markdownToPlainText(markdown: string): string {
     .trim();
 }
 
+/** SSML 文本节点转义：msedge-tts 不转义输入，含 & < > 的文本会让服务端直接断开连接 */
+function escapeXmlText(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export const ttsService = {
   /**
    * 将 Markdown 摘要合成为 MP3 音频流（Microsoft Edge 在线语音服务，免费）。
@@ -52,12 +57,31 @@ export const ttsService = {
 
     const tts = new MsEdgeTTS();
     await tts.setMetadata(DEFAULT_TTS_VOICE, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-    const { audioStream } = tts.toStream(text);
+    const { audioStream } = tts.toStream(escapeXmlText(text));
 
+    // 空音频（服务端拒绝但流正常结束）必须以错误暴露，否则客户端会拿到无法播放的空响应
+    const output = new PassThrough();
+    let audioBytes = 0;
     const closeConnection = () => tts.close();
-    audioStream.once('close', closeConnection);
-    audioStream.once('error', closeConnection);
 
-    return audioStream;
+    audioStream.on('data', (chunk: Buffer) => {
+      audioBytes += chunk.length;
+      output.write(chunk);
+    });
+    audioStream.once('end', () => {
+      closeConnection();
+      if (audioBytes === 0) {
+        output.destroy(new Error('语音服务未返回音频，请稍后重试'));
+      } else {
+        output.end();
+      }
+    });
+    audioStream.once('error', (err) => {
+      closeConnection();
+      output.destroy(err);
+    });
+    output.once('close', closeConnection);
+
+    return output;
   },
 };
