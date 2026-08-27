@@ -716,3 +716,55 @@ test('OpenAI compatible adapter explains reasoning-only responses without a fina
     },
   );
 });
+
+test('OpenAI compatible adapter retries with thinking disabled when reasoning burns the whole budget', async () => {
+  const captures: Array<{ body: any }> = [];
+  const transport: ModelHttpTransport = {
+    async post(_url, body) {
+      captures.push({ body });
+      if (captures.length === 1) {
+        return {
+          status: 200,
+          data: { model: 'm', choices: [{ finish_reason: 'length', message: { content: '', reasoning_content: '……' } }] },
+        };
+      }
+      return {
+        status: 200,
+        data: { model: 'm', choices: [{ finish_reason: 'stop', message: { content: '译文' } }] },
+      };
+    },
+  };
+  const gateway = new ModelGatewayService(transport);
+  const response = await gateway.call({ userMessage: '翻译', maxTokens: 100 }, { config: makeConfig() });
+
+  assert.equal(response.text, '译文');
+  assert.equal(captures.length, 2);
+  assert.equal('thinking' in captures[0].body, false);
+  assert.deepEqual(captures[1].body.thinking, { type: 'disabled' });
+});
+
+test('OpenAI compatible adapter reports the original truncation error when thinking cannot be disabled', async () => {
+  const captures: Array<{ body: any }> = [];
+  const transport: ModelHttpTransport = {
+    async post(_url, body) {
+      captures.push({ body });
+      if (captures.length === 1) {
+        return {
+          status: 200,
+          data: { model: 'm', choices: [{ finish_reason: 'length', message: { content: '', reasoning_content: '……' } }] },
+        };
+      }
+      return { status: 400, data: { error: { message: 'Unrecognized request argument: thinking' } } };
+    },
+  };
+  const gateway = new ModelGatewayService(transport);
+  await assert.rejects(
+    gateway.call({ userMessage: '翻译', maxTokens: 100 }, { config: makeConfig() }),
+    (error: unknown) => {
+      assert.ok(error instanceof ModelGatewayError);
+      assert.match(error.message, /截断|max_tokens/);
+      return true;
+    },
+  );
+  assert.equal(captures.length, 2);
+});

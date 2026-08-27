@@ -39,6 +39,7 @@ export class ModelGatewayError extends Error {
     message: string,
     public readonly status: number = 502,
     public readonly upstreamStatus?: number,
+    public readonly code?: 'reasoning-exhausted',
   ) {
     super(message);
     this.name = 'ModelGatewayError';
@@ -203,7 +204,7 @@ export class ModelGatewayService {
       }
 
       if (config.providerType === 'openai-compatible') {
-        const response = await this.httpTransport.post(endpoint, {
+        const requestBody = {
           model: config.model,
           messages: [
             { role: 'system', content: systemPrompt },
@@ -212,7 +213,8 @@ export class ModelGatewayService {
           ...(maxOutputTokens ? { max_tokens: maxOutputTokens } : {}),
           ...(request.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
           stream: false,
-        }, {
+        };
+        const postOptions = {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey || ''}`,
@@ -220,12 +222,31 @@ export class ModelGatewayService {
           timeout: timeoutMs,
           signal: request.signal,
           validateStatus: () => true,
-        });
+        };
 
+        let response = await this.httpTransport.post(endpoint, requestBody, postOptions);
         if (response.status < 200 || response.status >= 300) {
           throw createHttpError(response.status, response.data, config.apiKey);
         }
-        const text = parseOpenAIText(response.data);
+
+        let text: string;
+        try {
+          text = parseOpenAIText(response.data);
+        } catch (parseError: unknown) {
+          const reasoningExhausted = parseError instanceof ModelGatewayError
+            && parseError.code === 'reasoning-exhausted';
+          if (!reasoningExhausted) throw parseError;
+          // 思考型模型把输出预算耗在了思考上：尝试关闭思考重试一次
+          // （DeepSeek 官方支持 thinking 参数；不支持该参数的端点会拒绝，此时回抛原错误）
+          const retryResponse = await this.httpTransport.post(endpoint, {
+            ...requestBody,
+            thinking: { type: 'disabled' },
+          }, postOptions);
+          if (retryResponse.status < 200 || retryResponse.status >= 300) throw parseError;
+          text = parseOpenAIText(retryResponse.data);
+          response = retryResponse;
+        }
+
         return {
           text,
           model: typeof response.data?.model === 'string' ? response.data.model : config.model,
@@ -392,11 +413,11 @@ function parseOpenAIText(data: unknown): string {
   if (!text.trim()) {
     // 思考型模型（如 DeepSeek）的思考也计入 max_tokens：预算被思考耗尽时最终答案为空
     if (choice?.finish_reason === 'length') {
-      throw new ModelGatewayError('模型输出超出 max_tokens 限制被截断（思考型模型的思考内容也计入该限制），请重试或提高输出词元上限', 502);
+      throw new ModelGatewayError('模型输出超出 max_tokens 限制被截断（思考型模型的思考内容也计入该限制），请重试或提高输出词元上限', 502, undefined, 'reasoning-exhausted');
     }
     const reasoning = choice?.message?.reasoning_content;
     if (typeof reasoning === 'string' && reasoning.trim()) {
-      throw new ModelGatewayError('模型只返回了思考内容而没有最终答案，请重试', 502);
+      throw new ModelGatewayError('模型只返回了思考内容而没有最终答案，请重试', 502, undefined, 'reasoning-exhausted');
     }
     throw new ModelGatewayError('OpenAI 兼容服务没有返回文本内容', 502);
   }
