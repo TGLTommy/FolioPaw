@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTtsPlayerStore } from './useTtsPlayerStore';
 import { ttsApi } from '../services/api';
@@ -69,10 +69,44 @@ describe('useTtsPlayerStore', () => {
     const { result } = renderHook(() => useTtsPlayerStore());
     await act(() => result.current.play('book', '正文'));
 
-    act(() => FakeAudio.instances[0].emit('ended'));
+    await act(async () => FakeAudio.instances[0].emit('ended'));
 
     expect(result.current.status).toBe('idle');
     expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:mock-audio');
+  });
+
+  it('plays long text in segments, prefetching the next segment while one plays', async () => {
+    const longText = '第一句内容。'.repeat(150); // 900 字符 → 两段
+    const { result } = renderHook(() => useTtsPlayerStore());
+
+    await act(() => result.current.play('book', longText));
+
+    // 首段开播即可发声，第二段在后台预取
+    expect(result.current.status).toBe('playing');
+    expect(FakeAudio.instances).toHaveLength(1);
+    await waitFor(() => expect(speakMock).toHaveBeenCalledTimes(2));
+
+    // 首段播完自动衔接第二段
+    await act(async () => FakeAudio.instances[0].emit('ended'));
+    await waitFor(() => expect(FakeAudio.instances).toHaveLength(2));
+    expect(FakeAudio.instances[1].play).toHaveBeenCalled();
+    expect(result.current.status).toBe('playing');
+
+    // 第二段播完整体结束
+    await act(async () => FakeAudio.instances[1].emit('ended'));
+    expect(result.current.status).toBe('idle');
+  });
+
+  it('stopping a segmented playback prevents the next segment from starting', async () => {
+    const longText = '第一句内容。'.repeat(150);
+    const { result } = renderHook(() => useTtsPlayerStore());
+    await act(() => result.current.play('book', longText));
+
+    await act(async () => result.current.stop());
+
+    expect(result.current.status).toBe('idle');
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(FakeAudio.instances[0].pause).toHaveBeenCalled();
   });
 
   it('stops the previous audio when another id starts playing', async () => {
