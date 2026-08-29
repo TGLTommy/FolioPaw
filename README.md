@@ -140,6 +140,7 @@ npm run check
 
 ## 更多文档
 
+- [完整使用指南](docs/USER_GUIDE.md)
 - [部署说明](DEPLOYMENT.md)
 - [安全政策](SECURITY.md)
 - [贡献指南](CONTRIBUTING.md)
