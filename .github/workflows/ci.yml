@@ -43,11 +43,12 @@ jobs:
       - name: 检出源码
         uses: actions/checkout@v7
 
-      - name: 校验 CPU 与 GPU Compose 配置
+      - name: 校验 CPU、GPU Compose 配置与本地镜像构建策略
         run: |
           docker compose config >/dev/null
           docker compose -f compose.yaml -f compose.nvidia.yaml config >/dev/null
           docker compose -f compose.yaml -f compose.amd.yaml config >/dev/null
+          test "$(docker compose config | grep -c 'pull_policy: build')" -eq 2
 
       - name: 构建不含模型权重的 FolioPaw 应用镜像
         run: docker build --target foliopaw --tag foliopaw-ci .

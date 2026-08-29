@@ -4,6 +4,8 @@ name: readcat
 services:
   foliopaw:
     image: ${FOLIOPAW_IMAGE:-foliopaw:local}
+    # 源码持续更新时不要复用同名旧镜像；BuildKit 仍会复用未变化的构建层。
+    pull_policy: ${FOLIOPAW_IMAGE_PULL_POLICY:-build}
     build:
       context: .
       target: foliopaw
@@ -65,6 +67,7 @@ services:
 
   model-bootstrap:
     image: ${MODEL_BOOTSTRAP_IMAGE:-foliopaw-model-bootstrap:local}
+    pull_policy: ${FOLIOPAW_IMAGE_PULL_POLICY:-build}
     build:
       context: .
       target: model-bootstrap

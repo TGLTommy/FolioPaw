@@ -69,7 +69,7 @@ npm start
 需要 Docker Desktop，或 Docker Engine + Compose v2。建议至少 8 GB 内存和约 20 GB 可用磁盘：
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 打开 <http://127.0.0.1:17890> 即可使用阅读功能。Docker 会在后台启动 FolioPaw、Ollama 和模型引导服务，设置页会显示下载进度；模型准备完成后会自动启用，无需填写 API Key。
@@ -79,6 +79,19 @@ docker compose up -d
 > “免费”指不产生模型 API 调用费用，仍会使用本机的 CPU/GPU、内存、磁盘和电力。
 
 如果 FolioPaw 中已有启用的第三方模型，Docker 启动后不会覆盖它。
+
+### 更新 Docker 部署
+
+通过 Git 克隆项目的用户可以用下面两条命令更新到 GitHub `main` 分支的最新代码，并替换仍在运行的旧容器：
+
+```bash
+git pull --ff-only
+docker compose up -d --build --force-recreate --remove-orphans
+```
+
+Compose 已配置为每次 `up` 都检查本地源码并执行增量构建；未变化的步骤会继续使用 Docker 构建缓存。已经运行的容器不会在 GitHub 代码变化时自行更新，因此升级时仍需先执行 `git pull`。该过程保留数据库、上传书籍和模型卷，不需要先执行 `docker compose down`。
+
+> 通过 GitHub “Download ZIP” 获取项目的用户无法使用 `git pull`。建议改用 `git clone`，或者下载新版本源码后再执行上述第二条 Compose 命令。
 
 ## 中国大陆下载说明
 
@@ -95,6 +108,9 @@ docker compose up -d
 docker compose ps
 # 实时查看模型下载进度（首次启动需下载约 3GB 本地模型）
 docker compose logs -f model-bootstrap
+# 拉取最新代码并更新 Docker 容器
+git pull --ff-only
+docker compose up -d --build --force-recreate --remove-orphans
 # 暂停使用：停止容器，之后用 docker compose start 恢复
 docker compose stop
 # 停止并移除容器（书库和模型数据保留在数据卷中）

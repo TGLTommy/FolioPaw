@@ -17,11 +17,25 @@ FolioPaw 的支持范围是个人、本机、无账号部署。默认 Compose �
 ## CPU 一键启动
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 docker compose ps
 ```
 
 访问 <http://127.0.0.1:17890>。首次安装建议至少 8 GB 内存、约 20 GB 可用磁盘；默认 GGUF 为 `3,013,027,808` 字节，Docker 镜像和构建缓存还会占用额外空间。
+
+## 更新到 GitHub 最新代码
+
+源码通过 Git 克隆时，使用以下命令更新 `main` 分支并重建应用镜像：
+
+```bash
+git pull --ff-only
+docker compose up -d --build --force-recreate --remove-orphans
+docker compose ps
+```
+
+`foliopaw` 和 `model-bootstrap` 使用 `pull_policy: build`，每次 `up` 都会根据当前工作区源码执行增量构建，从而避免复用同名旧镜像。Docker 构建缓存仍会保留；无需日常使用 `--no-cache`，也无需先执行 `docker compose down`。
+
+Docker 无法主动获知远端 GitHub 仓库发生了变化。持续运行的容器不会自行热更新，因此获取远端最新代码仍以 `git pull --ff-only` 为准。若命令因本地改动或分支分叉而失败，应先人工处理 Git 状态，不要强制覆盖工作区。
 
 ## 模型下载来源
 
@@ -75,7 +89,7 @@ docker compose up -d --force-recreate model-bootstrap
 1. 在有网络的设备提前获取固定 GGUF 和全部 Docker 镜像，并自行安全传输。
 2. 把 GGUF 放到 `models/Qwen_Qwen3.5-4B-Q4_K_M.gguf`。
 3. `.env` 设置 `MODEL_DOWNLOAD_SOURCE=local`。
-4. 执行 `docker compose up -d`。
+4. 执行 `docker compose up -d --build`。
 
 local 模式默认使用与 ModelScope 回退相同的大小和 SHA-256。若文件不一致，引导失败且不会污染 `ollama_data`。
 
@@ -85,14 +99,14 @@ NVIDIA Container Toolkit 已正确安装的 Linux 主机：
 
 ```bash
 docker compose -f compose.yaml -f compose.nvidia.yaml config
-docker compose -f compose.yaml -f compose.nvidia.yaml up -d
+docker compose -f compose.yaml -f compose.nvidia.yaml up -d --build
 ```
 
 支持 ROCm 且存在 `/dev/kfd`、`/dev/dri` 的 Linux 主机：
 
 ```bash
 docker compose -f compose.yaml -f compose.amd.yaml config
-docker compose -f compose.yaml -f compose.amd.yaml up -d
+docker compose -f compose.yaml -f compose.amd.yaml up -d --build
 ```
 
 CPU、NVIDIA、AMD 三套配置都应在发布前运行 `docker compose ... config`。硬件驱动和容器运行时仍由部署者负责。官方示例见 [Ollama Docker 文档](https://docs.ollama.com/docker)。
@@ -161,7 +175,7 @@ Compose 有意固定绑定 `127.0.0.1`。若确需跨设备访问，应修改端
 ## 发布验收清单
 
 - CPU、NVIDIA、AMD Compose 均通过配置校验。
-- `docker compose up -d` 后 FolioPaw 页面先于模型下载可访问。
+- `docker compose up -d --build` 后 FolioPaw 页面先于模型下载可访问。
 - 官方源模拟失败后自动切换 ModelScope，进度、校验、导入和测试阶段可见。
 - 全新库在模型就绪后启用 Ollama；已有第三方启用状态不变。
 - 停止外网后重启，聊天、翻译、摘要、导读和思维导图仍可运行。
