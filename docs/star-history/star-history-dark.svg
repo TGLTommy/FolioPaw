@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="title description">
   <title id="title">FolioPaw GitHub Star 增长趋势</title>
-  <desc id="description">2026-08-26 至 2026-08-30，当前 17 Stars。</desc>
+  <desc id="description">2026-08-26 至 2026-09-01，当前 18 Stars。</desc>
   <defs>
     <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#58a6ff55" />
@@ -13,7 +13,7 @@
   <text x="36" y="74" fill="#8b949e" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14">由 GitHub Actions 自动更新 · 数据从 2026-08-26 开始记录</text>
   <rect x="792" y="24" width="132" height="54" rx="12" fill="#161b22" stroke="#30363d" />
   <text x="858" y="47" text-anchor="middle" fill="#8b949e" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">当前热度</text>
-  <text x="858" y="68" text-anchor="middle" fill="#f0f6fc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="700">★ 17</text>
+  <text x="858" y="68" text-anchor="middle" fill="#f0f6fc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="700">★ 18</text>
   <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
     <line x1="76" y1="342" x2="924" y2="342" stroke="#30363d" stroke-width="1" />
     <text x="60" y="347" text-anchor="end" fill="#8b949e" font-size="13">0</text>
@@ -28,27 +28,28 @@
     <line x1="76" y1="104" x2="924" y2="104" stroke="#30363d" stroke-width="1" />
     <text x="60" y="109" text-anchor="end" fill="#8b949e" font-size="13">20</text>
     <text x="76" y="374" fill="#8b949e" font-size="13">2026-08-26</text>
-    <text x="924" y="374" text-anchor="end" fill="#8b949e" font-size="13">2026-08-30</text>
-    <path d="M 76 342 L 101.16 330.1 L 253.74 318.2 L 262.86 306.3 L 266.32 294.4 L 270.07 282.5 L 270.73 270.6 L 271.04 258.7 L 272.66 246.8 L 292.92 234.9 L 298.08 223 L 308.29 211.1 L 348.38 199.2 L 485.54 187.3 L 689.94 175.4 L 692.09 163.5 L 714.28 151.6 L 924 139.7 L 924 342 L 76 342 Z" fill="url(#area)" />
-    <path d="M 76 342 L 101.16 330.1 L 253.74 318.2 L 262.86 306.3 L 266.32 294.4 L 270.07 282.5 L 270.73 270.6 L 271.04 258.7 L 272.66 246.8 L 292.92 234.9 L 298.08 223 L 308.29 211.1 L 348.38 199.2 L 485.54 187.3 L 689.94 175.4 L 692.09 163.5 L 714.28 151.6 L 924 139.7" fill="none" stroke="#58a6ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <text x="924" y="374" text-anchor="end" fill="#8b949e" font-size="13">2026-09-01</text>
+    <path d="M 76 342 L 94.01 330.1 L 203.24 318.2 L 209.76 306.3 L 212.25 294.4 L 214.93 282.5 L 215.4 270.6 L 215.62 258.7 L 216.78 246.8 L 231.29 234.9 L 234.98 223 L 242.29 211.1 L 270.99 199.2 L 369.18 187.3 L 515.5 175.4 L 517.04 163.5 L 532.92 151.6 L 683.05 139.7 L 924 127.8 L 924 342 L 76 342 Z" fill="url(#area)" />
+    <path d="M 76 342 L 94.01 330.1 L 203.24 318.2 L 209.76 306.3 L 212.25 294.4 L 214.93 282.5 L 215.4 270.6 L 215.62 258.7 L 216.78 246.8 L 231.29 234.9 L 234.98 223 L 242.29 211.1 L 270.99 199.2 L 369.18 187.3 L 515.5 175.4 L 517.04 163.5 L 532.92 151.6 L 683.05 139.7 L 924 127.8" fill="none" stroke="#58a6ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
     <circle cx="76" cy="342" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-26 05:57:38.950Z: 0 Stars</title></circle>
-    <circle cx="101.16" cy="330.1" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-26 08:55:50.290Z: 1 Stars</title></circle>
-    <circle cx="253.74" cy="318.2" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 02:56:30.189Z: 2 Stars</title></circle>
-    <circle cx="262.86" cy="306.3" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:01:04.178Z: 3 Stars</title></circle>
-    <circle cx="266.32" cy="294.4" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:25:38.101Z: 4 Stars</title></circle>
-    <circle cx="270.07" cy="282.5" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:52:08.411Z: 5 Stars</title></circle>
-    <circle cx="270.73" cy="270.6" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:56:51.279Z: 6 Stars</title></circle>
-    <circle cx="271.04" cy="258.7" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:59:00.514Z: 7 Stars</title></circle>
-    <circle cx="272.66" cy="246.8" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 05:10:29.169Z: 8 Stars</title></circle>
-    <circle cx="292.92" cy="234.9" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 07:34:00.460Z: 9 Stars</title></circle>
-    <circle cx="298.08" cy="223" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 08:10:32.693Z: 10 Stars</title></circle>
-    <circle cx="308.29" cy="211.1" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 09:22:51.820Z: 11 Stars</title></circle>
-    <circle cx="348.38" cy="199.2" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 14:06:49.764Z: 12 Stars</title></circle>
-    <circle cx="485.54" cy="187.3" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-28 06:18:16.894Z: 13 Stars</title></circle>
-    <circle cx="689.94" cy="175.4" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-29 06:25:56.273Z: 14 Stars</title></circle>
-    <circle cx="692.09" cy="163.5" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-29 06:41:10.451Z: 15 Stars</title></circle>
-    <circle cx="714.28" cy="151.6" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-29 09:18:19.623Z: 16 Stars</title></circle>
-    <circle cx="924" cy="139.7" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-30 10:03:41.480Z: 17 Stars</title></circle>
+    <circle cx="94.01" cy="330.1" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-26 08:55:50.290Z: 1 Stars</title></circle>
+    <circle cx="203.24" cy="318.2" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 02:56:30.189Z: 2 Stars</title></circle>
+    <circle cx="209.76" cy="306.3" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:01:04.178Z: 3 Stars</title></circle>
+    <circle cx="212.25" cy="294.4" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:25:38.101Z: 4 Stars</title></circle>
+    <circle cx="214.93" cy="282.5" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:52:08.411Z: 5 Stars</title></circle>
+    <circle cx="215.4" cy="270.6" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:56:51.279Z: 6 Stars</title></circle>
+    <circle cx="215.62" cy="258.7" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 04:59:00.514Z: 7 Stars</title></circle>
+    <circle cx="216.78" cy="246.8" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 05:10:29.169Z: 8 Stars</title></circle>
+    <circle cx="231.29" cy="234.9" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 07:34:00.460Z: 9 Stars</title></circle>
+    <circle cx="234.98" cy="223" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 08:10:32.693Z: 10 Stars</title></circle>
+    <circle cx="242.29" cy="211.1" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 09:22:51.820Z: 11 Stars</title></circle>
+    <circle cx="270.99" cy="199.2" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-27 14:06:49.764Z: 12 Stars</title></circle>
+    <circle cx="369.18" cy="187.3" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-28 06:18:16.894Z: 13 Stars</title></circle>
+    <circle cx="515.5" cy="175.4" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-29 06:25:56.273Z: 14 Stars</title></circle>
+    <circle cx="517.04" cy="163.5" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-29 06:41:10.451Z: 15 Stars</title></circle>
+    <circle cx="532.92" cy="151.6" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-29 09:18:19.623Z: 16 Stars</title></circle>
+    <circle cx="683.05" cy="139.7" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-08-30 10:03:41.480Z: 17 Stars</title></circle>
+    <circle cx="924" cy="127.8" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="3"><title>2026-09-01 01:47:33.324Z: 18 Stars</title></circle>
   </g>
   <text x="924" y="398" text-anchor="end" fill="#8b949e" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">github.com/TGLTommy/FolioPaw</text>
 </svg>
