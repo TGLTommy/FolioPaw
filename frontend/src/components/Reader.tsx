@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type TouchEvent } from 'react';
 import { useBookStore } from '../stores/useBookStore';
 import { bookApi, translationApi } from '../services/api';
-import { ChevronLeft, ChevronRight, ChevronUp, Loader, Home, AlertCircle, Menu, X, Maximize2, Minimize2, Languages, BookOpen, SunMedium, Leaf, Moon, Coffee, MonitorSmartphone, Sparkles, FileText, Network, Settings } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, Loader, Home, AlertCircle, Menu, X, Maximize2, Minimize2, BookOpen, SunMedium, Leaf, Moon, Coffee, MonitorSmartphone, Sparkles, FileText, Network, Settings } from 'lucide-react';
 import { TableOfContents, type TOCEntry } from './TableOfContents';
 import PdfReaderPane from './PdfReaderPane';
 import AiChatPanel from './AiChatPanel';
@@ -267,7 +267,7 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
     pointerId: number;
   }) | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [readingMode, setReadingMode] = useState<ReadingMode>('translated');
+  const [readingMode, setReadingMode] = useState<ReadingMode>(() => getDefaultReadingMode());
   const [pageSegmentIndex, setPageSegmentIndex] = useState(0);
   const [pageSegmentCount, setPageSegmentCount] = useState(1);
   const [pageColumnWidth, setPageColumnWidth] = useState(0);
@@ -422,7 +422,7 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
   }, [currentBook]);
 
   useEffect(() => {
-    setReadingMode(getDefaultReadingMode(currentBook?.file_type));
+    setReadingMode(getDefaultReadingMode());
     if (!textFeaturesAvailable) {
       isAiPanelOpenRef.current = false;
       setIsAiPanelOpen(false);
@@ -513,11 +513,11 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
     setCurrentPage(Math.max(1, Math.min(page, currentBook.total_pages)));
   }, [currentBook, setCurrentPage, suppressPageFlowTransition]);
 
-  const handleToggleReadingMode = useCallback(() => {
-    if (!textFeaturesAvailable) return;
+  const handleReadingModeChange = useCallback((mode: ReadingMode) => {
+    if (mode === readingMode || (mode === 'translated' && !textFeaturesAvailable)) return;
     suppressPageFlowTransition();
-    setReadingMode((mode) => mode === 'translated' ? 'original' : 'translated');
-  }, [suppressPageFlowTransition, textFeaturesAvailable]);
+    setReadingMode(mode);
+  }, [readingMode, suppressPageFlowTransition, textFeaturesAvailable]);
 
   // In single-column mode, arrows turn screen fragments first, then book pages.
   const handleNextPage = useCallback(() => {
@@ -1533,9 +1533,9 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
       {/* Header - 单行合并工具栏 */}
       {showReaderHeader && (
         <div className="reader-header px-3 py-1.5 shadow-sm">
-          <div className="flex items-center gap-2">
+          <div className="reader-toolbar flex items-center gap-2">
             {/* 左侧：导航和功能按钮 */}
-            <div className="flex items-center gap-1">
+            <div className="reader-toolbar-left flex items-center gap-1">
               <button
                 onClick={handleNavigateHome}
                 className="reader-icon-button p-1.5 rounded-lg transition-colors"
@@ -1563,25 +1563,40 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
                 </button>
               )}
               <div className="w-px h-5 mx-0.5 reader-separator" />
-              <button
-                onClick={handleToggleReadingMode}
-                disabled={!textFeaturesAvailable}
-                className={`p-1.5 rounded-lg transition-colors ${
-                  readingMode === 'original'
-                    ? 'reader-icon-button reader-icon-button-active'
-                    : 'reader-icon-button'
-                } disabled:cursor-not-allowed disabled:opacity-40`}
-                title={!textFeaturesAvailable
-                  ? '扫描版 PDF 未检测到可提取文字，仅支持原版阅读'
-                  : readingMode === 'translated' ? '切换到原文单栏' : '切换到译文单栏'}
-                aria-label={readingMode === 'translated' ? '切换到原文单栏' : '切换到译文单栏'}
+              <div
+                className="reader-language-switch"
+                role="group"
+                aria-label="阅读语言"
+                aria-describedby={!textFeaturesAvailable ? 'reader-language-unavailable-description' : undefined}
+                title={!textFeaturesAvailable ? '扫描版 PDF 未检测到可提取文字，仅支持英文原文阅读' : undefined}
               >
-                {readingMode === 'translated' ? (
-                  <Languages size={18} />
-                ) : (
-                  <BookOpen size={18} />
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleReadingModeChange('translated')}
+                  disabled={!textFeaturesAvailable}
+                  className={`reader-language-option ${readingMode === 'translated' ? 'reader-language-option-active' : ''}`}
+                  title={textFeaturesAvailable ? '阅读中文译文' : '当前书籍无法生成中文译文'}
+                  aria-label="切换为中文译文"
+                  aria-pressed={readingMode === 'translated'}
+                >
+                  中文
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleReadingModeChange('original')}
+                  className={`reader-language-option reader-language-option-en ${readingMode === 'original' ? 'reader-language-option-active' : ''}`}
+                  title="阅读英文原文"
+                  aria-label="切换为英文原文"
+                  aria-pressed={readingMode === 'original'}
+                >
+                  EN
+                </button>
+              </div>
+              {!textFeaturesAvailable && (
+                <span id="reader-language-unavailable-description" className="sr-only">
+                  未检测到可提取文字，仅支持英文原文阅读
+                </span>
+              )}
               {isPdf && currentBook.text_extraction_status !== 'ready' && (
                 <span
                   className={`ml-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${
@@ -1596,7 +1611,8 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
                   {currentBook.text_extraction_status === 'unavailable' ? '扫描版，仅可阅读' : '部分页面无文字'}
                 </span>
               )}
-              <div className="ml-2 flex items-center gap-1.5 rounded-full px-1.5 py-1 reader-theme-switch">
+              <div className="reader-theme-separator w-px h-5 mx-1 reader-separator" />
+              <div className="flex items-center gap-1.5 rounded-full px-1.5 py-1 reader-theme-switch">
                 {readerThemeOptions.map(({ id, label, icon: Icon }) => (
                   <button
                     key={id}
@@ -1609,7 +1625,7 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
                   >
                     <span className="flex items-center gap-1.5">
                       <Icon size={14} />
-                      {label}
+                      <span className="reader-theme-label">{label}</span>
                     </span>
                   </button>
                 ))}
@@ -1617,7 +1633,7 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
             </div>
 
             {/* 中间：进度条和页码 */}
-            <div className="flex items-center gap-3 flex-1 mx-4">
+            <div className="reader-toolbar-progress flex items-center gap-3 flex-1 mx-4">
               <div className="reader-progress-track flex-1 h-1.5 rounded-full overflow-hidden">
                 <div
                   className="reader-progress-fill h-full transition-all duration-300 rounded-full"
@@ -1632,36 +1648,36 @@ export default function Reader({ onNavigateHome, onNavigateSettings }: ReaderPro
             </div>
 
             {/* 右侧：摘要、AI助手、全屏、隐藏 */}
-            <div className="flex items-center gap-1.5">
+            <div className="reader-toolbar-actions flex items-center gap-1.5">
               <button
                 onClick={() => setIsSummaryPanelOpen(true)}
                 disabled={!textFeaturesAvailable}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm hover:shadow-md hover:from-teal-600 hover:to-cyan-600 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:from-slate-400 disabled:to-slate-400 disabled:opacity-50 disabled:hover:scale-100"
+                className="reader-toolbar-action-button flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm hover:shadow-md hover:from-teal-600 hover:to-cyan-600 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:from-slate-400 disabled:to-slate-400 disabled:opacity-50 disabled:hover:scale-100"
                 title={textFeaturesAvailable ? '智能摘要' : '扫描版 PDF 未检测到可提取文字'}
                 aria-label="智能摘要"
               >
                 <FileText size={14} />
-                <span>摘要</span>
+                <span className="reader-toolbar-action-label">摘要</span>
               </button>
               <button
                 onClick={() => setIsMindMapPanelOpen(true)}
                 disabled={!textFeaturesAvailable}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-sm hover:shadow-md hover:from-blue-600 hover:to-purple-600 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:from-slate-400 disabled:to-slate-400 disabled:opacity-50 disabled:hover:scale-100"
+                className="reader-toolbar-action-button flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-sm hover:shadow-md hover:from-blue-600 hover:to-purple-600 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:from-slate-400 disabled:to-slate-400 disabled:opacity-50 disabled:hover:scale-100"
                 title={textFeaturesAvailable ? '思维导图' : '扫描版 PDF 未检测到可提取文字'}
                 aria-label="思维导图"
               >
                 <Network size={14} />
-                <span>导图</span>
+                <span className="reader-toolbar-action-label">导图</span>
               </button>
               <button
                 onClick={() => { isAiPanelOpenRef.current = true; setIsAiPanelOpen(true); }}
                 disabled={!textFeaturesAvailable}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 bg-gradient-to-r from-violet-500 to-indigo-500 text-white shadow-sm hover:shadow-md hover:from-violet-600 hover:to-indigo-600 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:from-slate-400 disabled:to-slate-400 disabled:opacity-50 disabled:hover:scale-100"
+                className="reader-toolbar-action-button flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 bg-gradient-to-r from-violet-500 to-indigo-500 text-white shadow-sm hover:shadow-md hover:from-violet-600 hover:to-indigo-600 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:from-slate-400 disabled:to-slate-400 disabled:opacity-50 disabled:hover:scale-100"
                 title={textFeaturesAvailable ? 'AI 问答助手 (⌘J)' : '扫描版 PDF 未检测到可提取文字'}
                 aria-label="AI 问答助手"
               >
                 <Sparkles size={14} />
-                <span>AI</span>
+                <span className="reader-toolbar-action-label">AI</span>
               </button>
               <div className="w-px h-5 mx-0.5 reader-separator" />
               <button

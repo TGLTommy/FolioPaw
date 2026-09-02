@@ -9,8 +9,6 @@ export function canUseBookTextFeatures(
     && book?.text_extraction_status !== 'unavailable';
 }
 
-export function getDefaultReadingMode(
-  fileType: Book['file_type'] | null | undefined
-): ReadingMode {
-  return fileType === 'pdf' ? 'original' : 'translated';
+export function getDefaultReadingMode(): ReadingMode {
+  return 'original';
 }

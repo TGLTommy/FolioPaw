@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { canUseBookTextFeatures, getDefaultReadingMode } from './bookCapabilities';
 
 describe('book text capabilities', () => {
-  it('opens PDFs in original mode and EPUBs in translated mode', () => {
-    expect(getDefaultReadingMode('pdf')).toBe('original');
-    expect(getDefaultReadingMode('epub')).toBe('translated');
+  it('opens books in original English mode by default', () => {
+    expect(getDefaultReadingMode()).toBe('original');
   });
 
   it('only disables text features for unavailable extraction', () => {
