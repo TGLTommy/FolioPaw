@@ -27,6 +27,7 @@ type UploadBookResponse = {
   total_pages?: number;
   totalPages?: number;
   duplicate?: boolean;
+  import_status?: Book['import_status'];
 };
 
 type TranslationDisplay = {
@@ -55,6 +56,7 @@ type ReadingStatusDisplay = {
 };
 
 const ACTIVE_JOB_STATUSES = new Set(['pending', 'processing', 'stopping']);
+const ACTIVE_IMPORT_STATUSES = new Set(['pending', 'processing']);
 const READING_STATUS_OPTIONS: ReadingStatus[] = ['unread', 'reading', 'paused', 'finished', 'abandoned'];
 const READING_STATUS_DISPLAY: Record<ReadingStatus, ReadingStatusDisplay> = {
   unread: {
@@ -93,8 +95,10 @@ function isBookVisibleInFolder(book: Book, folderId: number | null | 'all') {
   return folderId === 'all' || book.folder_id === folderId;
 }
 
-function getBookDedupeKey(book: Pick<Book, 'original_name' | 'file_type' | 'file_size' | 'total_pages'>) {
-  return `${book.original_name}|${book.file_type}|${book.file_size}|${book.total_pages}`;
+function getBookDedupeKey(book: Pick<Book, 'id'>) {
+  // The backend's content hash is authoritative. Metadata can legitimately be
+  // identical (especially while queued books all have zero parsed pages).
+  return String(book.id);
 }
 
 function getTranslationPercent(donePages: number, totalPages: number): number {
@@ -109,6 +113,32 @@ function getBookReadingStatus(book: Book): ReadingStatus {
 
 function getTranslationDisplay(book: Book, activeJob?: BatchStatus): TranslationDisplay {
   const totalPages = book.total_pages || activeJob?.totalPages || 0;
+
+  if (book.import_status && ACTIVE_IMPORT_STATUSES.has(book.import_status)) {
+    return {
+      label: book.import_status === 'pending' ? '等待解析' : '正在解析',
+      detail: book.import_stage || '后台导入中',
+      percent: 0,
+      translatedPages: 0,
+      totalPages,
+      state: 'active',
+      badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+      barClass: 'bg-blue-500',
+    };
+  }
+
+  if (book.import_status === 'failed') {
+    return {
+      label: '导入失败',
+      detail: book.import_error || '书籍解析失败',
+      percent: 0,
+      translatedPages: 0,
+      totalPages,
+      state: 'failed',
+      badgeClass: 'bg-red-50 text-red-700 border-red-200',
+      barClass: 'bg-red-500',
+    };
+  }
 
   if (!canUseBookTextFeatures(book)) {
     return {
@@ -236,6 +266,24 @@ function getTranslationDisplay(book: Book, activeJob?: BatchStatus): Translation
 }
 
 function getReadingGuideDisplay(book: Book): ReadingGuideDisplay {
+  if (book.import_status && ACTIVE_IMPORT_STATUSES.has(book.import_status)) {
+    return {
+      label: '导入中',
+      title: '书籍正在后台解析，完成后可生成AI摘要',
+      state: 'active',
+      className: 'border-blue-200 bg-blue-50 text-blue-700',
+    };
+  }
+
+  if (book.import_status === 'failed') {
+    return {
+      label: '待重试',
+      title: book.import_error || '书籍解析失败，请重试',
+      state: 'failed',
+      className: 'border-red-200 bg-red-50 text-red-700',
+    };
+  }
+
   if (!canUseBookTextFeatures(book)) {
     return {
       label: '仅可阅读',
@@ -403,6 +451,14 @@ export default function BookList() {
 
   const handleOpenBook = useCallback(async (book: Book) => {
     if (batchStatus[book.id]) return;
+    if (book.import_status && ACTIVE_IMPORT_STATUSES.has(book.import_status)) {
+      addToast('书籍正在后台解析，完成后即可打开', 'info');
+      return;
+    }
+    if (book.import_status === 'failed') {
+      addToast(book.import_error || '书籍解析失败，请从更多操作中重试', 'error');
+      return;
+    }
 
     try {
       const response = await bookApi.getBook(book.id);
@@ -411,7 +467,7 @@ export default function BookList() {
       console.error('Failed to refresh book before opening:', error);
       setCurrentBook(book);
     }
-  }, [batchStatus, setCurrentBook]);
+  }, [addToast, batchStatus, setCurrentBook]);
 
   const toggleBookSelection = useCallback((bookId: number) => {
     setSelectedBookIds(prev => {
@@ -448,6 +504,64 @@ export default function BookList() {
   useEffect(() => {
     loadBooks(selectedFolderId);
   }, [loadBooks, selectedFolderId]);
+
+  useEffect(() => {
+    const activeBooks = books.filter(
+      book => book.import_status && ACTIVE_IMPORT_STATUSES.has(book.import_status)
+    );
+    if (activeBooks.length === 0) return;
+
+    let cancelled = false;
+    const refreshImports = async () => {
+      const updates = await Promise.all(activeBooks.map(async (book) => {
+        try {
+          const response = await bookApi.getImportStatus(book.id);
+          return { previous: book, current: response.data.data as Book };
+        } catch (error) {
+          console.error(`Failed to refresh import status for book ${book.id}:`, error);
+          return null;
+        }
+      }));
+      if (cancelled) return;
+
+      const validUpdates = updates.filter((update): update is NonNullable<typeof update> => Boolean(update));
+      setBooks(previousBooks => {
+        let changed = false;
+        const nextBooks = previousBooks.map(book => {
+          const update = validUpdates.find(item => item.current.id === book.id);
+          if (!update) return book;
+          if (
+            book.import_status === update.current.import_status
+            && book.import_stage === update.current.import_stage
+            && book.import_error === update.current.import_error
+          ) {
+            return book;
+          }
+          changed = true;
+          return update.current;
+        });
+        return changed ? nextBooks : previousBooks;
+      });
+
+      for (const update of validUpdates) {
+        if (update.current.import_status === 'ready') {
+          addToast(`《${update.current.original_name}》解析完成`, 'success');
+        } else if (update.current.import_status === 'failed') {
+          addToast(
+            `《${update.current.original_name}》解析失败：${update.current.import_error || '未知错误'}`,
+            'error',
+          );
+        }
+      }
+    };
+
+    void refreshImports();
+    const interval = setInterval(() => void refreshImports(), 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [addToast, books]);
 
   useEffect(() => {
     const activeBookIds = books
@@ -795,6 +909,7 @@ export default function BookList() {
       let successCount = 0;
       let duplicateCount = 0;
       let failCount = 0;
+      const failedUploads: string[] = [];
 
       for (const file of Array.from(files)) {
         try {
@@ -834,6 +949,7 @@ export default function BookList() {
           }
         } catch (error: unknown) {
           failCount++;
+          failedUploads.push(`${file.name}：${getApiErrorMessage(error, '上传失败')}`);
           console.error(`上传失败: ${file.name}`, error);
         }
       }
@@ -843,18 +959,36 @@ export default function BookList() {
       e.target.value = '';
 
       if (failCount === 0 && duplicateCount === 0) {
-        addToast(`成功上传 ${successCount} 本书籍！`, 'success');
+        addToast(`已接收 ${successCount} 本书籍，正在后台解析`, 'success');
       } else {
         addToast(
-          `上传完成：${successCount} 本新增，${duplicateCount} 本重复跳过，${failCount} 本失败`,
+          `上传完成：${successCount} 本进入解析，${duplicateCount} 本已存在，${failCount} 本上传失败`,
           failCount > 0 ? 'error' : duplicateCount > 0 ? 'info' : 'success'
         );
+      }
+      if (failedUploads.length > 0) {
+        addToast(failedUploads.slice(0, 3).join('；'), 'error');
       }
 
     } catch (error: unknown) {
       addToast(`上传失败: ${getErrorMessage(error)}`, 'error');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleRetryImport = async (bookId: number) => {
+    try {
+      await bookApi.retryImport(bookId);
+      setBooks(previous => previous.map(book => (
+        book.id === bookId
+          ? { ...book, import_status: 'pending', import_stage: 'queued', import_error: null }
+          : book
+      )));
+      setContextMenuId(null);
+      addToast('已重新排队解析', 'info');
+    } catch (error: unknown) {
+      addToast(getApiErrorMessage(error, '重新解析失败'), 'error');
     }
   };
 
@@ -1265,13 +1399,15 @@ export default function BookList() {
               const readingStatusDisplay = READING_STATUS_DISPLAY[readingStatus];
               const isSelected = selectedBookIds.has(book.id);
               const textFeaturesAvailable = canUseBookTextFeatures(book);
+              const importActive = Boolean(book.import_status && ACTIVE_IMPORT_STATUSES.has(book.import_status));
+              const importFailed = book.import_status === 'failed';
               const coverAspectClass = book.file_type === 'pdf' ? 'aspect-[17/22]' : 'aspect-[2/3]';
 
               return (
                 <div key={book.id} className="group">
                   {/* Book Cover with 3D effect */}
                   <div
-                    className="relative cursor-pointer book-cover-3d"
+                    className={`relative book-cover-3d ${importActive || importFailed ? 'cursor-default' : 'cursor-pointer'}`}
                     onClick={() => {
                       if (isSelectionMode) {
                         toggleBookSelection(book.id);
@@ -1313,7 +1449,11 @@ export default function BookList() {
                         </div>
                       )}
 
-                      {book.file_type === 'pdf' && book.text_extraction_status !== 'ready' && (
+                      {book.import_status !== 'pending'
+                        && book.import_status !== 'processing'
+                        && book.import_status !== 'failed'
+                        && book.file_type === 'pdf'
+                        && book.text_extraction_status !== 'ready' && (
                         <div
                           className={`absolute bottom-2 left-2 z-10 rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${
                             book.text_extraction_status === 'unavailable'
@@ -1360,8 +1500,35 @@ export default function BookList() {
                       {/* Cover surface gloss */}
                       <div className="absolute inset-0 pointer-events-none book-cover-gloss" />
 
+                      {importActive && (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/65 px-3 text-white">
+                          <div className="text-center">
+                            <Loader size={26} className="mx-auto mb-2 animate-spin" />
+                            <div className="text-xs font-semibold">
+                              {book.import_status === 'pending' ? '等待解析' : '正在解析'}
+                            </div>
+                            <div className="mt-1 text-[10px] text-slate-200">可离开此页面，任务会在后台继续</div>
+                          </div>
+                        </div>
+                      )}
+
+                      {importFailed && (
+                        <div
+                          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-red-950/70 px-3 text-white"
+                          title={book.import_error || '书籍解析失败'}
+                        >
+                          <div className="text-center">
+                            <AlertCircle size={26} className="mx-auto mb-2" />
+                            <div className="text-xs font-semibold">解析失败</div>
+                            <div className="mt-1 line-clamp-3 text-[10px] text-red-100">
+                              {book.import_error || '请从更多操作中重试'}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Batch progress overlay */}
-                      {batchStatus[book.id] && (
+                      {!importActive && !importFailed && batchStatus[book.id] && (
                         <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                           <div className="text-center text-white">
                             <Loader size={24} className="animate-spin mx-auto mb-2" />
@@ -1410,6 +1577,20 @@ export default function BookList() {
                         {/* Context menu dropdown */}
                         {contextMenuId === book.id && (
                           <div className="book-context-menu absolute right-0 bottom-full mb-1 w-44 bg-white/95 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-xl z-20 overflow-visible py-1">
+                            {importFailed && (
+                              <>
+                                <button
+                                  onClick={() => void handleRetryImport(book.id)}
+                                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-red-700 hover:bg-red-50"
+                                  title={book.import_error || '重新解析原始上传文件'}
+                                >
+                                  <Loader size={14} className="text-red-500" />
+                                  重新解析
+                                </button>
+                                <div className="my-1 h-px bg-gray-200/80" />
+                              </>
+                            )}
+
                               {/* Pin / Unpin */}
                               <button
                                 onClick={() => { handleTogglePin(book.id, book.is_pinned); setContextMenuId(null); setStatusMenuOpenId(null); }}

@@ -55,7 +55,7 @@ const envSchema = z.object({
   MAX_PDF_PAGES: z.coerce.number().int().min(1).max(100_000).default(2_000),
   MAX_EPUB_ENTRIES: z.coerce.number().int().min(1).max(100_000).default(10_000),
   MAX_EPUB_UNCOMPRESSED_SIZE: z.coerce.number().int().positive().default(1_073_741_824),
-  MAX_EPUB_ENTRY_SIZE: z.coerce.number().int().positive().default(104_857_600),
+  MAX_EPUB_ENTRY_SIZE: z.coerce.number().int().positive().default(209_715_200),
   MAX_EPUB_COMPRESSION_RATIO: z.coerce.number().positive().default(100),
   CORS_ORIGINS: corsOrigins,
   TRUST_PROXY: booleanString,

@@ -175,7 +175,10 @@ export async function parsePDF(filePath: string): Promise<ParsedPdf> {
 
   const pdfjs = await loadPdfJs();
   const loadingTask = pdfjs.getDocument({
-    data: new Uint8Array(buffer),
+    // Use a plain Uint8Array view over the Buffer's existing memory. PDF.js
+    // rejects Buffer instances, while copying with new Uint8Array(buffer)
+    // would double the allocation for 100–200 MB PDFs.
+    data: new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength),
     useSystemFonts: true,
     isEvalSupported: false,
   });

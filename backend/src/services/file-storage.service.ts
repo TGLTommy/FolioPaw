@@ -34,6 +34,55 @@ class FileStorageService {
   }
 
   /**
+   * Register a multer upload that is already on disk. The common disk-storage
+   * path deliberately avoids materialising the whole book as a second Buffer.
+   */
+  async persistUploadedFile(
+    bookId: number,
+    filePath: string,
+    useBlob: boolean = this.config.useBlob
+  ): Promise<{ success: boolean; error?: string; blobSize?: number }> {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return { success: false, error: '上传文件不存在' };
+      }
+
+      const fileName = path.basename(filePath);
+      const fullPath = path.join(this.config.uploadDir, fileName);
+      if (path.resolve(filePath) !== path.resolve(fullPath)) {
+        fs.copyFileSync(filePath, fullPath);
+        fs.chmodSync(fullPath, 0o600);
+        db.prepare('UPDATE books SET file_path = ? WHERE id = ?').run(fullPath, bookId);
+      }
+
+      const fileSize = fs.statSync(fullPath).size;
+      if (!useBlob) {
+        console.log(`File registered on disk for book ${bookId} (${fileSize} bytes)`);
+        return { success: true };
+      }
+
+      const fileBuffer = fs.readFileSync(fullPath);
+      let blobData = fileBuffer;
+      if (this.config.compress) {
+        blobData = await gzip(fileBuffer, { level: this.config.compressionLevel });
+      }
+
+      db.prepare(`
+        UPDATE books
+        SET file_blob = ?, use_blob_storage = 1, blob_size = ?
+        WHERE id = ?
+      `).run(blobData, blobData.length, bookId);
+
+      console.log(`File saved to BLOB for book ${bookId} (original: ${fileSize} bytes, stored: ${blobData.length} bytes)`);
+      return { success: true, blobSize: blobData.length };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      console.error(`Error registering file for book ${bookId}:`, errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
    * Save file to disk and optionally to database BLOB
    */
   async saveFile(

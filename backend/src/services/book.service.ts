@@ -33,6 +33,27 @@ export function assertBookAccess(userId: number, bookId: number): void {
 }
 
 export type ReadingStatus = 'unread' | 'reading' | 'paused' | 'finished' | 'abandoned';
+export type BookImportStatus = 'pending' | 'processing' | 'ready' | 'failed';
+
+export interface UploadBookResult {
+  id: number;
+  filename: string;
+  originalName: string;
+  fileType: string;
+  totalPages: number;
+  toc: unknown;
+  text_extraction_status: 'ready' | 'partial' | 'unavailable';
+  text_page_count: number;
+  import_status: BookImportStatus;
+  import_stage: string | null;
+  import_error: string | null;
+  duplicate: boolean;
+}
+
+export interface StagedBookUpload {
+  book: UploadBookResult;
+  shouldEnqueue: boolean;
+}
 
 const READING_STATUSES = new Set<ReadingStatus>(['unread', 'reading', 'paused', 'finished', 'abandoned']);
 
@@ -64,7 +85,8 @@ async function findExistingBookForUpload(
   fileHash: string
 ) {
   const byHash = db.prepare(`
-    SELECT id, filename, original_name, file_type, total_pages, table_of_contents
+    SELECT id, filename, original_name, file_path, file_type, file_size, file_hash,
+           total_pages, table_of_contents, import_status, import_stage, import_error
     FROM books
     WHERE user_id = ? AND file_hash = ?
     ORDER BY upload_time DESC, id DESC
@@ -74,7 +96,8 @@ async function findExistingBookForUpload(
   if (byHash) return byHash;
 
   const legacyCandidates = db.prepare(`
-    SELECT id, filename, original_name, file_type, total_pages, table_of_contents, file_path
+    SELECT id, filename, original_name, file_path, file_type, file_size, file_hash,
+           total_pages, table_of_contents, import_status, import_stage, import_error
     FROM books
     WHERE user_id = ? AND file_hash IS NULL AND file_size = ?
     ORDER BY upload_time DESC, id DESC
@@ -100,7 +123,8 @@ async function findExistingBookForUpload(
   // above; matching them on name/type/size would discard a genuinely different
   // upload that merely shares those attributes.
   return db.prepare(`
-    SELECT id, filename, original_name, file_type, total_pages, table_of_contents
+    SELECT id, filename, original_name, file_path, file_type, file_size, file_hash,
+           total_pages, table_of_contents, import_status, import_stage, import_error
     FROM books
     WHERE user_id = ? AND file_hash IS NULL
       AND original_name = ? AND file_type = ? AND file_size = ?
@@ -109,7 +133,44 @@ async function findExistingBookForUpload(
   `).get(userId, originalName, fileType, fileSize) as any;
 }
 
-export async function saveBook(file: Express.Multer.File, folderId: number | null = null, userId: number) {
+function parseStoredToc(value: string | null | undefined): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function toUploadBookResult(book: any, duplicate: boolean): UploadBookResult {
+  const importStatus = (book.import_status || 'ready') as BookImportStatus;
+  const capability = importStatus === 'ready' ? getBookTextCapability(book.id) : null;
+  return {
+    id: book.id,
+    filename: book.filename,
+    originalName: book.original_name,
+    fileType: book.file_type,
+    totalPages: book.total_pages || 0,
+    toc: parseStoredToc(book.table_of_contents),
+    text_extraction_status: capability?.textExtractionStatus || 'ready',
+    text_page_count: capability?.textPageCount ?? (importStatus === 'ready' ? book.total_pages || 0 : 0),
+    import_status: importStatus,
+    import_stage: book.import_stage || null,
+    import_error: book.import_error || null,
+    duplicate,
+  };
+}
+
+function getImportFailureMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || '未知错误');
+  return message.replace(/^Error:\s*/i, '').slice(0, 1000) || '书籍解析失败';
+}
+
+export async function stageBookUpload(
+  file: Express.Multer.File,
+  folderId: number | null = null,
+  userId: number
+): Promise<StagedBookUpload> {
   const fileType = path.extname(file.originalname).toLowerCase().replace('.', '');
 
   if (fileType !== 'epub' && fileType !== 'pdf') {
@@ -132,71 +193,163 @@ export async function saveBook(file: Express.Multer.File, folderId: number | nul
     cleanupUploadedFile(file.path);
     throw error;
   }
-  const existingBook = await findExistingBookForUpload(userId, file.originalname, fileType, file.size, fileHash);
+
+  const existingBook = await findExistingBookForUpload(
+    userId,
+    file.originalname,
+    fileType,
+    file.size,
+    fileHash,
+  );
   if (existingBook) {
-    cleanupUploadedFile(file.path);
+    let shouldEnqueue = existingBook.import_status !== 'ready';
+
+    if (existingBook.import_status === 'failed') {
+      const existingPath = resolveBookFilePath(existingBook.file_path);
+      if (fs.existsSync(existingPath)) {
+        cleanupUploadedFile(file.path);
+      } else {
+        db.prepare(`
+          UPDATE books
+          SET filename = ?, original_name = ?, file_path = ?, file_type = ?, file_size = ?, file_hash = ?
+          WHERE id = ? AND user_id = ?
+        `).run(
+          file.filename,
+          file.originalname,
+          file.path,
+          fileType,
+          file.size,
+          fileHash,
+          existingBook.id,
+          userId,
+        );
+        existingBook.filename = file.filename;
+        existingBook.original_name = file.originalname;
+        existingBook.file_path = file.path;
+        existingBook.file_size = file.size;
+      }
+
+      db.prepare(`
+        UPDATE books
+        SET import_status = 'pending', import_stage = 'queued', import_error = NULL,
+            import_started_at = NULL, import_completed_at = NULL
+        WHERE id = ? AND user_id = ?
+      `).run(existingBook.id, userId);
+      existingBook.import_status = 'pending';
+      existingBook.import_stage = 'queued';
+      existingBook.import_error = null;
+      shouldEnqueue = true;
+    } else {
+      cleanupUploadedFile(file.path);
+    }
+
     if (folderId !== null) {
       moveBookToFolder(userId, existingBook.id, folderId);
     }
 
     console.log(`Duplicate upload skipped: ExistingID=${existingBook.id}, Name=${file.originalname}`);
-    const capability = getBookTextCapability(existingBook.id);
     return {
-      id: existingBook.id,
-      filename: existingBook.filename,
-      originalName: existingBook.original_name,
-      fileType: existingBook.file_type,
-      totalPages: existingBook.total_pages,
-      toc: existingBook.table_of_contents ? JSON.parse(existingBook.table_of_contents) : null,
-      text_extraction_status: capability?.textExtractionStatus || 'ready',
-      text_page_count: capability?.textPageCount ?? existingBook.total_pages,
-      duplicate: true
+      book: toUploadBookResult(existingBook, true),
+      shouldEnqueue,
     };
   }
 
-  let parsedBook: Awaited<ReturnType<typeof parseEPUB>> | Awaited<ReturnType<typeof parsePDF>>;
+  let bookId: number;
   try {
-    parsedBook = fileType === 'pdf'
-      ? await parsePDF(file.path)
-      : await parseEPUB(file.path);
+    const insertBook = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO books (
+          filename, original_name, file_path, file_type, file_size, file_hash,
+          total_pages, user_id, table_of_contents, folder_id, cover_image_path,
+          import_status, import_stage
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?, NULL, ?, NULL, 'pending', 'queued')
+      `).run(
+        file.filename,
+        file.originalname,
+        file.path,
+        fileType,
+        file.size,
+        fileHash,
+        userId,
+        folderId,
+      );
+      const id = Number(result.lastInsertRowid);
+
+      if (folderId !== null) {
+        db.prepare(`
+          INSERT OR REPLACE INTO user_book_folders (user_id, book_id, folder_id)
+          VALUES (?, ?, ?)
+        `).run(userId, id, folderId);
+      }
+      return id;
+    });
+    bookId = insertBook();
   } catch (error) {
     cleanupUploadedFile(file.path);
     throw error;
   }
-  const { pages, totalPages, toc } = parsedBook;
-  let { coverImagePath } = parsedBook;
-  const createdResourcePaths = [...parsedBook.createdResourcePaths];
 
-  if (fileType === 'pdf') {
-    const renderedCover = await renderPdfCover(file.path);
-    if (renderedCover) {
-      coverImagePath = renderedCover.url;
-      createdResourcePaths.push(renderedCover.filePath);
-    }
-  }
-  let bookId: number | null = null;
+  const stagedBook = db.prepare('SELECT * FROM books WHERE id = ?').get(bookId) as any;
+  return {
+    book: toUploadBookResult(stagedBook, false),
+    shouldEnqueue: true,
+  };
+}
+
+export async function processBookImport(bookId: number): Promise<UploadBookResult> {
+  const book = db.prepare('SELECT * FROM books WHERE id = ?').get(bookId) as any;
+  if (!book) throw new Error('书籍不存在');
+  if (book.import_status === 'ready') return toUploadBookResult(book, false);
+
+  const filePath = resolveBookFilePath(book.file_path);
+  const createdResourcePaths: string[] = [];
 
   try {
-    const bookResult = db.prepare(`
-      INSERT INTO books (filename, original_name, file_path, file_type, file_size, file_hash, total_pages, user_id, table_of_contents, folder_id, cover_image_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(file.filename, file.originalname, file.path, fileType, file.size, fileHash, totalPages, userId, toc ? JSON.stringify(toc) : null, folderId || null, coverImagePath);
-    bookId = Number(bookResult.lastInsertRowid);
+    if (!fs.existsSync(filePath)) {
+      throw new Error('上传文件不存在，无法继续解析');
+    }
 
-    const fileBuffer = fs.readFileSync(file.path);
-    const storageResult = await fileStorageService.saveFile(bookId, file.path, fileBuffer);
+    db.prepare(`
+      UPDATE books
+      SET import_status = 'processing', import_stage = 'validating', import_error = NULL,
+          import_started_at = CURRENT_TIMESTAMP, import_completed_at = NULL
+      WHERE id = ?
+    `).run(bookId);
+
+    db.prepare("UPDATE books SET import_stage = 'parsing' WHERE id = ?").run(bookId);
+    const parsedBook = book.file_type === 'pdf'
+      ? await parsePDF(filePath)
+      : await parseEPUB(filePath);
+    const { pages, totalPages, toc } = parsedBook;
+    let { coverImagePath } = parsedBook;
+    createdResourcePaths.push(...parsedBook.createdResourcePaths);
+
+    if (book.file_type === 'pdf') {
+      const renderedCover = await renderPdfCover(filePath);
+      if (renderedCover) {
+        coverImagePath = renderedCover.url;
+        createdResourcePaths.push(renderedCover.filePath);
+      }
+    }
+
+    db.prepare("UPDATE books SET import_stage = 'persisting' WHERE id = ?").run(bookId);
+    const storageResult = await fileStorageService.persistUploadedFile(bookId, filePath);
     if (!storageResult.success) {
       throw new Error(storageResult.error || '书籍文件保存失败');
     }
 
     const saveBookRecords = db.transaction(() => {
+      db.prepare('DELETE FROM pages WHERE book_id = ?').run(bookId);
+      db.prepare('DELETE FROM ai_page_search WHERE book_id = ?').run(bookId);
+      db.prepare('DELETE FROM ai_page_search_meta WHERE book_id = ?').run(bookId);
+
       const insertPage = db.prepare(`
         INSERT INTO pages (book_id, page_number, original_text, page_hash)
         VALUES (?, ?, ?, ?)
       `);
-
       for (const page of pages) {
-        const pageHash = fileType === 'pdf' && !isMeaningfulExtractedText(page.text)
+        const pageHash = book.file_type === 'pdf' && !isMeaningfulExtractedText(page.text)
           ? null
           : deduplicationService.calculatePageHash(page.text);
         insertPage.run(bookId, page.pageNumber, page.text, pageHash);
@@ -205,14 +358,12 @@ export async function saveBook(file: Express.Multer.File, folderId: number | nul
       if (!coverImagePath && pages.length > 0) {
         coverImagePath = extractCoverFromHtml(pages[0].text);
       }
-      if (coverImagePath) {
-        db.prepare('UPDATE books SET cover_image_path = ? WHERE id = ?').run(coverImagePath, bookId);
-      }
 
-      if (folderId) {
-        db.prepare('INSERT OR REPLACE INTO user_book_folders (user_id, book_id, folder_id) VALUES (?, ?, ?)')
-          .run(userId, bookId, folderId);
-      }
+      db.prepare(`
+        UPDATE books
+        SET total_pages = ?, table_of_contents = ?, cover_image_path = ?, import_stage = 'indexing'
+        WHERE id = ?
+      `).run(totalPages, toc ? JSON.stringify(toc) : null, coverImagePath, bookId);
     });
     saveBookRecords();
 
@@ -222,30 +373,89 @@ export async function saveBook(file: Express.Multer.File, folderId: number | nul
       console.warn(`Failed to build AI search index for book ${bookId}:`, error instanceof Error ? error.message : error);
     }
 
-    const capability = getBookTextCapability(bookId);
-    return {
-      id: bookId,
-      filename: file.filename,
-      originalName: file.originalname,
-      fileType,
-      totalPages,
-      toc,
-      text_extraction_status: capability?.textExtractionStatus || 'ready',
-      text_page_count: capability?.textPageCount ?? totalPages,
-      duplicate: false,
-    };
+    db.prepare(`
+      UPDATE books
+      SET import_status = 'ready', import_stage = 'complete', import_error = NULL,
+          import_completed_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(bookId);
+
+    const completedBook = db.prepare('SELECT * FROM books WHERE id = ?').get(bookId) as any;
+    return toUploadBookResult(completedBook, false);
   } catch (error) {
-    if (bookId !== null) {
-      await fileStorageService.deleteFile(bookId);
-      db.prepare('DELETE FROM books WHERE id = ? AND user_id = ?').run(bookId, userId);
-    }
-    cleanupUploadedFile(file.path);
     for (const resourcePath of createdResourcePaths) {
       try {
         fs.rmSync(resourcePath, { force: true });
       } catch {
-        // Preserve the persistence failure as the primary error.
+        // Preserve the parser/persistence failure as the primary error.
       }
+    }
+
+    db.transaction(() => {
+      db.prepare('DELETE FROM pages WHERE book_id = ?').run(bookId);
+      db.prepare('DELETE FROM ai_page_search WHERE book_id = ?').run(bookId);
+      db.prepare('DELETE FROM ai_page_search_meta WHERE book_id = ?').run(bookId);
+      db.prepare(`
+        UPDATE books
+        SET total_pages = 0, table_of_contents = NULL, cover_image_path = NULL,
+            import_status = 'failed', import_stage = 'failed', import_error = ?,
+            import_completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(getImportFailureMessage(error), bookId);
+    })();
+    throw error;
+  }
+}
+
+export function prepareBookImportRetry(bookId: number, userId: number): UploadBookResult {
+  const book = db.prepare('SELECT * FROM books WHERE id = ? AND user_id = ?').get(bookId, userId) as any;
+  if (!book) {
+    const error = new Error('书籍不存在') as Error & { status?: number; expose?: boolean };
+    error.status = 404;
+    error.expose = true;
+    throw error;
+  }
+  if (book.import_status !== 'failed') {
+    const error = new Error('只有解析失败的书籍可以重试') as Error & { status?: number; expose?: boolean };
+    error.status = 409;
+    error.expose = true;
+    throw error;
+  }
+
+  const filePath = resolveBookFilePath(book.file_path);
+  if (!fs.existsSync(filePath)) {
+    const error = new Error('原始上传文件不存在，请重新上传') as Error & { status?: number; expose?: boolean };
+    error.status = 409;
+    error.expose = true;
+    throw error;
+  }
+
+  db.prepare(`
+    UPDATE books
+    SET import_status = 'pending', import_stage = 'queued', import_error = NULL,
+        import_started_at = NULL, import_completed_at = NULL
+    WHERE id = ? AND user_id = ?
+  `).run(bookId, userId);
+  book.import_status = 'pending';
+  book.import_stage = 'queued';
+  book.import_error = null;
+  return toUploadBookResult(book, false);
+}
+
+export async function saveBook(file: Express.Multer.File, folderId: number | null = null, userId: number) {
+  const staged = await stageBookUpload(file, folderId, userId);
+  if (!staged.shouldEnqueue) return staged.book;
+
+  try {
+    const imported = await processBookImport(staged.book.id);
+    return { ...imported, duplicate: staged.book.duplicate };
+  } catch (error) {
+    // Preserve the historical synchronous service contract for internal
+    // callers. The HTTP upload route uses stageBookUpload + the queue and keeps
+    // failed records so users can inspect and retry them.
+    if (!staged.book.duplicate) {
+      await fileStorageService.deleteFile(staged.book.id);
+      db.prepare('DELETE FROM books WHERE id = ? AND user_id = ?').run(staged.book.id, userId);
     }
     throw error;
   }
@@ -272,7 +482,7 @@ export function getBookById(id: number, userId: number) {
 
   if (book) {
     const parsedToc = book.table_of_contents ? JSON.parse(book.table_of_contents) : null;
-    const capability = getBookTextCapability(book.id);
+    const capability = book.import_status === 'ready' ? getBookTextCapability(book.id) : null;
     const { file_path: _filePath, ...publicBook } = book;
     return {
       ...publicBook,
@@ -280,7 +490,7 @@ export function getBookById(id: number, userId: number) {
       folder_id: book.user_folder_id ?? null,
       tableOfContents: parsedToc,
       text_extraction_status: capability?.textExtractionStatus || 'ready',
-      text_page_count: capability?.textPageCount ?? book.total_pages,
+      text_page_count: capability?.textPageCount ?? (book.import_status === 'ready' ? book.total_pages : 0),
       translatedPages: book.translated_pages,
       translationProgress: book.total_pages > 0 ? (book.translated_pages / book.total_pages * 100).toFixed(2) : 0,
     };
@@ -624,7 +834,7 @@ export function getBooksByFolder(userId: number, folderId: number | null | 'all'
 
   const capabilities = getBookTextCapabilities(books.map((book) => book.id));
   return books.map((book) => {
-    const capability = capabilities.get(book.id);
+    const capability = book.import_status === 'ready' ? capabilities.get(book.id) : null;
     const { file_path: _filePath, ...publicBook } = book;
     return {
       ...publicBook,
@@ -632,7 +842,7 @@ export function getBooksByFolder(userId: number, folderId: number | null | 'all'
       folder_id: book.user_folder_id ?? null,
       tableOfContents: book.table_of_contents ? JSON.parse(book.table_of_contents) : null,
       text_extraction_status: capability?.textExtractionStatus || 'ready',
-      text_page_count: capability?.textPageCount ?? book.total_pages,
+      text_page_count: capability?.textPageCount ?? (book.import_status === 'ready' ? book.total_pages : 0),
     };
   });
 }
@@ -890,7 +1100,7 @@ async function extractCoverFromPdf(filePath: string): Promise<string | null> {
 export async function backfillBookCovers(): Promise<void> {
   const books = db.prepare(`
     SELECT b.id, b.file_path, b.file_type FROM books b
-    WHERE b.cover_image_path IS NULL
+    WHERE b.cover_image_path IS NULL AND b.import_status = 'ready'
   `).all() as { id: number; file_path: string; file_type: string }[];
 
   if (books.length === 0) return;

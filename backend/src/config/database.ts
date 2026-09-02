@@ -46,7 +46,13 @@ export function initDatabase() {
       blob_size INTEGER,
       table_of_contents TEXT,
       folder_id INTEGER,
-      cover_image_path TEXT
+      cover_image_path TEXT,
+      import_status TEXT NOT NULL DEFAULT 'ready'
+        CHECK(import_status IN ('pending', 'processing', 'ready', 'failed')),
+      import_stage TEXT,
+      import_error TEXT,
+      import_started_at DATETIME,
+      import_completed_at DATETIME
     )
   `);
 
@@ -320,6 +326,11 @@ export function initDatabase() {
     const hasCoverImagePath = booksTableInfo.some((col) => col.name === 'cover_image_path');
     const hasUserId = booksTableInfo.some((col) => col.name === 'user_id');
     const hasFileHash = booksTableInfo.some((col) => col.name === 'file_hash');
+    const hasImportStatus = booksTableInfo.some((col) => col.name === 'import_status');
+    const hasImportStage = booksTableInfo.some((col) => col.name === 'import_stage');
+    const hasImportError = booksTableInfo.some((col) => col.name === 'import_error');
+    const hasImportStartedAt = booksTableInfo.some((col) => col.name === 'import_started_at');
+    const hasImportCompletedAt = booksTableInfo.some((col) => col.name === 'import_completed_at');
 
     if (!hasFileBlob) {
       db.exec('ALTER TABLE books ADD COLUMN file_blob BLOB');
@@ -352,6 +363,29 @@ export function initDatabase() {
     if (!hasCoverImagePath) {
       db.exec('ALTER TABLE books ADD COLUMN cover_image_path TEXT');
       console.log('Added cover_image_path column to books table');
+    }
+    if (!hasImportStatus) {
+      db.exec(`
+        ALTER TABLE books ADD COLUMN import_status TEXT NOT NULL DEFAULT 'ready'
+          CHECK(import_status IN ('pending', 'processing', 'ready', 'failed'))
+      `);
+      console.log('Added import_status column to books table');
+    }
+    if (!hasImportStage) {
+      db.exec('ALTER TABLE books ADD COLUMN import_stage TEXT');
+      console.log('Added import_stage column to books table');
+    }
+    if (!hasImportError) {
+      db.exec('ALTER TABLE books ADD COLUMN import_error TEXT');
+      console.log('Added import_error column to books table');
+    }
+    if (!hasImportStartedAt) {
+      db.exec('ALTER TABLE books ADD COLUMN import_started_at DATETIME');
+      console.log('Added import_started_at column to books table');
+    }
+    if (!hasImportCompletedAt) {
+      db.exec('ALTER TABLE books ADD COLUMN import_completed_at DATETIME');
+      console.log('Added import_completed_at column to books table');
     }
 
     const pagesTableInfo = db.pragma('table_info(pages)') as any[];
@@ -580,6 +614,7 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_page_cache_page_hash ON page_cache(page_hash);
     CREATE INDEX IF NOT EXISTS idx_page_cache_fingerprint ON page_cache(translation_fingerprint);
     CREATE INDEX IF NOT EXISTS idx_books_translation_status ON books(translation_status);
+    CREATE INDEX IF NOT EXISTS idx_books_import_status ON books(import_status);
     CREATE INDEX IF NOT EXISTS idx_books_folder_id ON books(folder_id);
     CREATE INDEX IF NOT EXISTS idx_books_user_file_hash ON books(user_id, file_hash);
     CREATE INDEX IF NOT EXISTS idx_books_user_upload_dedupe ON books(user_id, original_name, file_type, file_size);

@@ -4,7 +4,7 @@ import { isUtf8 } from 'node:buffer';
 import type Database from 'better-sqlite3';
 import { runtimeConfig } from './env';
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 const LATIN1_DECODED_UTF8_SEQUENCE = /[\u00c2-\u00f4][\u0080-\u00bf]/u;
 

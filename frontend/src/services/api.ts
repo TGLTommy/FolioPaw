@@ -68,8 +68,15 @@ export const bookApi = {
     }
     return api.post('/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      // Large local uploads can legitimately take longer than the global
+      // request timeout even though parsing now continues in the background.
+      timeout: 10 * 60 * 1000,
     });
   },
+
+  getImportStatus: (bookId: number) => api.get(`/upload/${bookId}/status`),
+
+  retryImport: (bookId: number) => api.post(`/upload/${bookId}/retry`),
 
   getAllBooks: (folderId?: number | null | 'all') => {
     const params: Record<string, string> = {};

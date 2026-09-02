@@ -7,6 +7,7 @@ import { createApp } from '../app';
 import { db, initDatabase } from '../config/database';
 import { runtimeConfig } from '../config/env';
 import { bookAiContextService } from '../services/book-ai-context.service';
+import { bookImportService } from '../services/book-import.service';
 
 describe('account-free local library', () => {
   beforeAll(() => {
@@ -33,19 +34,27 @@ describe('account-free local library', () => {
       .post('/api/upload')
       .attach('file', Buffer.from('not an epub'), {
         filename: 'fake.epub',
+        contentType: 'text/plain',
+      })
+      .expect(400);
+    await request(app)
+      .post('/api/upload')
+      .field('folderId', 'not-a-folder-id')
+      .attach('file', createSyntheticEpub(), {
+        filename: 'invalid-folder.epub',
         contentType: 'application/epub+zip',
       })
       .expect(400);
     expect(fs.readdirSync(runtimeConfig.uploadDir).sort()).toEqual(filesBeforeRejectedUpload);
 
-    const uploaded = await request(app)
-      .post('/api/upload')
-      .attach('file', createSyntheticEpub(), {
-        filename: 'synthetic.epub',
-        contentType: 'application/epub+zip',
-      })
-      .expect(200);
+    const uploaded = await uploadAndWait(
+      app,
+      createSyntheticEpub(),
+      'synthetic.epub',
+      'application/epub+zip',
+    );
     const bookId = uploaded.body.data.id as number;
+    expect(uploaded.body.data.import_status).toBe('ready');
 
     const book = await request(app).get(`/api/books/${bookId}`).expect(200);
     await request(app).get(book.body.data.file_url).expect(200);
@@ -86,14 +95,12 @@ describe('account-free local library', () => {
       ['Second physical page stays separate from the first page content.', 'Second page second line.'],
     ], { outline: true });
 
-    const uploaded = await request(app)
-      .post('/api/upload')
-      .attach('file', pdf, { filename: 'two-pages.pdf', contentType: 'application/pdf' })
-      .expect(200);
+    const uploaded = await uploadAndWait(app, pdf, 'two-pages.pdf', 'application/pdf');
     const bookId = uploaded.body.data.id as number;
 
     expect(uploaded.body.data.filename).toMatch(/\.pdf$/);
-    expect(uploaded.body.data.totalPages).toBe(2);
+    expect(uploaded.body.data.total_pages).toBe(2);
+    expect(uploaded.body.data.import_status).toBe('ready');
     expect(uploaded.body.data.text_extraction_status).toBe('ready');
     expect(uploaded.body.data.text_page_count).toBe(2);
 
@@ -143,17 +150,16 @@ describe('account-free local library', () => {
     const app = createApp();
     const originalName = '2608.03573v2_中科院_论文分析.pdf';
 
-    const uploaded = await request(app)
-      .post('/api/upload')
-      .attach('file', createSyntheticPdf([
+    const uploaded = await uploadAndWait(
+      app,
+      createSyntheticPdf([
         ['This PDF verifies that a Unicode upload filename remains intact.'],
-      ]), {
-        filename: originalName,
-        contentType: 'application/pdf',
-      })
-      .expect(200);
+      ]),
+      originalName,
+      'application/pdf',
+    );
 
-    expect(uploaded.body.data.originalName).toBe(originalName);
+    expect(uploaded.body.data.original_name).toBe(originalName);
 
     const book = await request(app)
       .get(`/api/books/${uploaded.body.data.id}`)
@@ -164,13 +170,7 @@ describe('account-free local library', () => {
   it('keeps scanned PDFs readable while every text capability returns the stable 422 error', async () => {
     const app = createApp();
     const scannedPdf = createSyntheticPdf([[], []]);
-    const uploaded = await request(app)
-      .post('/api/upload')
-      .attach('file', scannedPdf, {
-        filename: 'scanned.pdf',
-        contentType: 'application/pdf',
-      })
-      .expect(200);
+    const uploaded = await uploadAndWait(app, scannedPdf, 'scanned.pdf', 'application/pdf');
     const bookId = uploaded.body.data.id as number;
 
     const book = await request(app).get(`/api/books/${bookId}`).expect(200);
@@ -218,16 +218,15 @@ describe('account-free local library', () => {
 
   it('marks mixed PDFs partial, excludes blank pages from FTS, and skips blank-page translation', async () => {
     const app = createApp();
-    const uploaded = await request(app)
-      .post('/api/upload')
-      .attach('file', createSyntheticPdf([
+    const uploaded = await uploadAndWait(
+      app,
+      createSyntheticPdf([
         ['This mixed PDF page has enough searchable text for all text capabilities.'],
         [],
-      ]), {
-        filename: 'mixed.pdf',
-        contentType: 'application/pdf',
-      })
-      .expect(200);
+      ]),
+      'mixed.pdf',
+      'application/pdf',
+    );
     const bookId = uploaded.body.data.id as number;
 
     const book = await request(app).get(`/api/books/${bookId}`).expect(200);
@@ -288,41 +287,37 @@ describe('account-free local library', () => {
     expect(listFilesRecursively(runtimeConfig.uploadDir)).toEqual([]);
   });
 
-  it('rejects invalid, corrupt, zero-page, password-protected, and oversized PDFs without residue', async () => {
+  it('keeps invalid PDF imports as retryable failed records and rejects MIME mismatches immediately', async () => {
     const app = createApp();
     const filesBefore = listFilesRecursively(runtimeConfig.uploadDir);
     const booksBefore = (db.prepare('SELECT COUNT(*) as count FROM books').get() as { count: number }).count;
 
-    await request(app)
-      .post('/api/upload')
-      .attach('file', Buffer.from('not a pdf'), { filename: 'fake.pdf', contentType: 'application/pdf' })
-      .expect(400);
-    await request(app)
-      .post('/api/upload')
-      .attach('file', Buffer.from('%PDF-1.7\ncorrupt'), { filename: 'corrupt.pdf', contentType: 'application/pdf' })
-      .expect(400);
-    await request(app)
-      .post('/api/upload')
-      .attach('file', createSyntheticPdf([]), { filename: 'zero.pdf', contentType: 'application/pdf' })
-      .expect(400);
+    const failedImports = await Promise.all([
+      uploadAndWait(app, Buffer.from('not a pdf'), 'fake.pdf', 'application/pdf'),
+      uploadAndWait(app, Buffer.from('%PDF-1.7\ncorrupt'), 'corrupt.pdf', 'application/pdf'),
+      uploadAndWait(app, createSyntheticPdf([]), 'zero.pdf', 'application/pdf'),
+      uploadAndWait(
+        app,
+        createSyntheticPdf([['Password protected content']], { encrypted: true }),
+        'protected.pdf',
+        'application/pdf',
+      ),
+      uploadAndWait(
+        app,
+        createSyntheticPdf(Array.from({ length: 2001 }, () => [])),
+        'too-many-pages.pdf',
+        'application/pdf',
+      ),
+    ]);
 
-    const passwordResponse = await request(app)
-      .post('/api/upload')
-      .attach('file', createSyntheticPdf([['Password protected content']], { encrypted: true }), {
-        filename: 'protected.pdf',
-        contentType: 'application/pdf',
-      })
-      .expect(400);
-    expect(passwordResponse.body.code).toBe('PDF_PASSWORD_PROTECTED');
-
-    const oversized = await request(app)
-      .post('/api/upload')
-      .attach('file', createSyntheticPdf(Array.from({ length: 2001 }, () => [])), {
-        filename: 'too-many-pages.pdf',
-        contentType: 'application/pdf',
-      })
-      .expect(400);
-    expect(oversized.body.code).toBe('PDF_PAGE_LIMIT_EXCEEDED');
+    for (const failedImport of failedImports) {
+      expect(failedImport.body.data.import_status).toBe('failed');
+      expect(failedImport.body.data.import_stage).toBe('failed');
+      expect(failedImport.body.data.import_error).toEqual(expect.any(String));
+    }
+    expect(failedImports[0].body.data.import_error).toContain('文件头无效');
+    expect(failedImports[3].body.data.import_error).toContain('密码');
+    expect(failedImports[4].body.data.import_error).toContain('最多 2000 页');
 
     await request(app)
       .post('/api/upload')
@@ -332,7 +327,19 @@ describe('account-free local library', () => {
       })
       .expect(400);
 
-    expect((db.prepare('SELECT COUNT(*) as count FROM books').get() as { count: number }).count).toBe(booksBefore);
+    expect((db.prepare('SELECT COUNT(*) as count FROM books').get() as { count: number }).count)
+      .toBe(booksBefore + failedImports.length);
+    expect(listFilesRecursively(runtimeConfig.uploadDir)).toHaveLength(filesBefore.length + failedImports.length);
+
+    const retryBookId = failedImports[3].body.data.id as number;
+    await request(app).post(`/api/upload/${retryBookId}/retry`).expect(202);
+    await bookImportService.waitForIdle();
+    const retried = await request(app).get(`/api/upload/${retryBookId}/status`).expect(200);
+    expect(retried.body.data.import_status).toBe('failed');
+
+    for (const failedImport of failedImports) {
+      await request(app).delete(`/api/books/${failedImport.body.data.id}`).expect(200);
+    }
     expect(listFilesRecursively(runtimeConfig.uploadDir)).toEqual(filesBefore);
   });
 });
@@ -463,6 +470,24 @@ function listFilesRecursively(directory: string): string[] {
   };
   visit(directory);
   return files.sort();
+}
+
+async function uploadAndWait(
+  app: ReturnType<typeof createApp>,
+  file: Buffer,
+  filename: string,
+  contentType: string,
+) {
+  const staged = await request(app)
+    .post('/api/upload')
+    .attach('file', file, { filename, contentType })
+    .expect(202);
+  expect(staged.body.data.import_status).toBe('pending');
+
+  await bookImportService.waitForIdle();
+  return request(app)
+    .get(`/api/upload/${staged.body.data.id}/status`)
+    .expect(200);
 }
 
 async function waitForBatchJob(app: ReturnType<typeof createApp>, bookId: number) {

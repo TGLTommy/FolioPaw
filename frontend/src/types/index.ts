@@ -19,6 +19,7 @@ export interface Folder {
 
 export type ReadingStatus = 'unread' | 'reading' | 'paused' | 'finished' | 'abandoned';
 export type TextExtractionStatus = 'ready' | 'partial' | 'unavailable';
+export type BookImportStatus = 'pending' | 'processing' | 'ready' | 'failed';
 
 export interface Book {
   id: number;
@@ -43,6 +44,11 @@ export interface Book {
   cover_image_path?: string | null;
   is_pinned?: number;
   reading_status?: ReadingStatus;
+  import_status?: BookImportStatus;
+  import_stage?: string | null;
+  import_error?: string | null;
+  import_started_at?: string | null;
+  import_completed_at?: string | null;
 }
 
 export interface Page {

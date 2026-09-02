@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import AdmZip from 'adm-zip';
 import { db, initDatabase } from '../config/database';
 import { runtimeConfig } from '../config/env';
-import { saveBook } from './book.service';
+import { saveBook, stageBookUpload } from './book.service';
+import { bookImportService } from './book-import.service';
 
 const UPLOAD_DIR = runtimeConfig.uploadDir;
 
@@ -70,6 +71,18 @@ describe('upload deduplication', () => {
     expect(books.count).toBe(1);
   });
 
+  it('keeps the synchronous service cleanup contract on parser failure', async () => {
+    const userId = ownerId();
+    await expect(saveBook(
+      stageUpload('invalid.epub', Buffer.from('not a zip container')),
+      null,
+      userId,
+    )).rejects.toThrow();
+
+    expect((db.prepare('SELECT COUNT(*) AS count FROM books').get() as { count: number }).count).toBe(0);
+    expect(fs.readdirSync(UPLOAD_DIR)).toEqual([]);
+  });
+
   it('stores a different file that happens to share name and size', async () => {
     // Padded so both revisions are the same byte length: name + type + size all
     // match, and only the content hash tells them apart. The old fallback
@@ -105,5 +118,37 @@ describe('upload deduplication', () => {
 
     expect(uploaded.duplicate).toBe(true);
     expect(uploaded.id).toBe(legacyId);
+  });
+
+  it('resumes an import that was interrupted while processing', async () => {
+    const userId = ownerId();
+    const staged = await stageBookUpload(
+      stageUpload('resume.epub', createEpub('Resume this import.')),
+      null,
+      userId,
+    );
+    expect(staged.book.import_status).toBe('pending');
+
+    db.prepare(`
+      UPDATE books SET import_status = 'processing', import_stage = 'parsing'
+      WHERE id = ?
+    `).run(staged.book.id);
+
+    bookImportService.resumeInterruptedImports();
+    await bookImportService.waitForIdle();
+
+    const imported = db.prepare(`
+      SELECT import_status, import_stage, total_pages
+      FROM books WHERE id = ?
+    `).get(staged.book.id) as {
+      import_status: string;
+      import_stage: string;
+      total_pages: number;
+    };
+    expect(imported).toEqual({
+      import_status: 'ready',
+      import_stage: 'complete',
+      total_pages: 1,
+    });
   });
 });

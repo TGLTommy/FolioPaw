@@ -6,11 +6,13 @@ import { batchTranslationService } from './services/batch-translation.service';
 import { readingGuideService } from './services/reading-guide.service';
 import { initializeCacheService } from './services/cache.service';
 import { ollamaBootstrapService } from './services/ollama-bootstrap.service';
+import { bookImportService } from './services/book-import.service';
 
 initDatabase();
 initializeCacheService();
 ollamaBootstrapService.initialize();
 backfillBookCovers();
+bookImportService.resumeInterruptedImports();
 batchTranslationService.resumeInterruptedJobs();
 readingGuideService.resumeInterruptedGuides();
 
